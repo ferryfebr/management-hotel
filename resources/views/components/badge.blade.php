@@ -13,8 +13,9 @@
         // biru
         'occupied' => 'bg-blue-100 text-blue-700',
         'checked_in' => 'bg-blue-100 text-blue-700',
-        'reserved' => 'bg-blue-100 text-blue-700',
         'dp' => 'bg-blue-100 text-blue-700',
+        // kuning keemasan (menunggu)
+        'reserved' => 'bg-amber-100 text-amber-700',
         // kuning
         'dirty' => 'bg-yellow-100 text-yellow-700',
         'pending' => 'bg-yellow-100 text-yellow-700',

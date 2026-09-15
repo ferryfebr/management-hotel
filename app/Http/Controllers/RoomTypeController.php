@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\RoomType;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,7 +25,9 @@ class RoomTypeController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        RoomType::create($data);
+        $roomType = RoomType::create($data);
+
+        ActivityLog::record('Tambah jenis kamar', ActivityLog::CATEGORY_JENIS_KAMAR, $roomType->name);
 
         return back()->with('success', 'Jenis kamar berhasil ditambahkan.');
     }
@@ -39,6 +42,8 @@ class RoomTypeController extends Controller
 
         $roomType->update($data);
 
+        ActivityLog::record('Ubah jenis kamar', ActivityLog::CATEGORY_JENIS_KAMAR, $roomType->name);
+
         return back()->with('success', 'Jenis kamar berhasil diperbarui.');
     }
 
@@ -48,7 +53,10 @@ class RoomTypeController extends Controller
             return back()->withErrors('Jenis kamar tidak bisa dihapus karena masih memiliki kamar.');
         }
 
+        $name = $roomType->name;
         $roomType->delete();
+
+        ActivityLog::record('Hapus jenis kamar', ActivityLog::CATEGORY_JENIS_KAMAR, $name);
 
         return back()->with('success', 'Jenis kamar berhasil dihapus.');
     }

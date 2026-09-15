@@ -37,7 +37,7 @@ class ReservationController extends Controller
             'customer_phone' => ['required', 'digits_between:10,12'],
             'room_id' => ['required', 'exists:rooms,id'],
             'check_in_date' => ['required', 'date', 'after_or_equal:today'],
-            'check_out_date' => ['required', 'date', 'after:check_in_date'],
+            'check_out_date' => ['required', 'date', 'after_or_equal:check_in_date'],
         ], [
             'customer_phone.digits_between' => 'No. Telepon harus 10-12 angka.',
         ]);
@@ -64,6 +64,7 @@ class ReservationController extends Controller
             $checkIn = $data['check_in_date'];
             $checkOut = $data['check_out_date'];
             $totalDays = (int) now()->parse($checkIn)->diffInDays($checkOut);
+            $totalDays = max($totalDays, 1);
             $totalPrice = $totalDays * (float) $room->roomType->price;
 
             Transaction::create([

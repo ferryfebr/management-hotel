@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\Room;
 use App\Models\RoomType;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +28,9 @@ class RoomController extends Controller
 
         $data['status'] = Room::STATUS_AVAILABLE;
 
-        Room::create($data);
+        $room = Room::create($data);
+
+        ActivityLog::record('Tambah kamar', ActivityLog::CATEGORY_KAMAR, "Kamar {$room->room_number}");
 
         return back()->with('success', 'Kamar berhasil ditambahkan.');
     }
@@ -40,6 +43,8 @@ class RoomController extends Controller
         ]);
 
         $room->update($data);
+
+        ActivityLog::record('Ubah data kamar', ActivityLog::CATEGORY_KAMAR, "Kamar {$room->room_number}");
 
         return back()->with('success', 'Data kamar berhasil diperbarui.');
     }
@@ -54,7 +59,14 @@ class RoomController extends Controller
             'status' => ['required', 'in:available,occupied,dirty,maintenance'],
         ]);
 
+        $oldStatus = $room->status;
         $room->update($data);
+
+        ActivityLog::record(
+            'Ubah status kamar',
+            ActivityLog::CATEGORY_KAMAR,
+            "Kamar {$room->room_number}: {$oldStatus} → {$data['status']}"
+        );
 
         return back()->with('success', 'Status kamar berhasil diperbarui.');
     }
@@ -65,7 +77,10 @@ class RoomController extends Controller
             return back()->withErrors('Kamar tidak bisa dihapus karena memiliki histori transaksi.');
         }
 
+        $roomNumber = $room->room_number;
         $room->delete();
+
+        ActivityLog::record('Hapus kamar', ActivityLog::CATEGORY_KAMAR, "Kamar {$roomNumber}");
 
         return back()->with('success', 'Kamar berhasil dihapus.');
     }

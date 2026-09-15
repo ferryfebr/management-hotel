@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric $amount
  * @property string $payment_method
  * @property string $type
+ * @property string|null $notes
  * @property int $received_by
  * @property \Illuminate\Support\Carbon $paid_at
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -39,12 +40,14 @@ class Payment extends Model
     public const TYPE_DP = 'dp';
     public const TYPE_PELUNASAN = 'pelunasan';
     public const TYPE_REFUND = 'refund';
+    public const TYPE_CHARGE = 'charge';
 
     protected $fillable = [
         'transaction_id',
         'amount',
         'payment_method',
         'type',
+        'notes',
         'received_by',
         'paid_at',
     ];

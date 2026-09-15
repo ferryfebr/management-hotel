@@ -60,7 +60,7 @@
         <tbody>
             @forelse($payments as $payment)
                 <tr class="border-b border-gray-100 hover:bg-gray-50">
-                    <td class="px-4 py-3">{{ $payment->paid_at->format('d M Y H:i') }}</td>
+                    <td class="px-4 py-3">{{ $payment->paid_at->format('d M Y H.i') }} WIT</td>
                     <td class="px-4 py-3">{{ $payment->transaction->code }}</td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2.5">

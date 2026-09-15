@@ -22,16 +22,24 @@ class TransactionController extends Controller
     /**
      * Daftar tamu yang sedang menginap (checked_in).
      */
-    public function active(): View
+    public function active(Request $request): View
     {
+        $search = trim((string) $request->query('q'));
+
         $transactions = Transaction::with(['customer', 'room.roomType'])
             ->active()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('code', 'like', "%{$search}%")
+                        ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%"));
+                });
+            })
             ->orderBy('check_out_date')
             ->get();
 
         $availableRooms = Room::available()->orderBy('room_number')->get();
 
-        return view('transactions.active', compact('transactions', 'availableRooms'));
+        return view('transactions.active', compact('transactions', 'availableRooms', 'search'));
     }
 
     public function createCheckInForm(): View
@@ -52,21 +60,69 @@ class TransactionController extends Controller
             'id_card_number' => ['required', 'digits:16'],
             'id_card_photo' => ['required', 'image', 'max:4096'], // wajib upload, maks 4MB
             'room_id' => ['required', 'exists:rooms,id'],
+            // Diisi hanya saat konversi reservasi -> check-in; dipakai untuk
+            // mengecualikan reservasi itu sendiri dari cek bentrok tanggal.
+            'reservation_id' => ['nullable', 'exists:transactions,id'],
             'check_in_date' => ['required', 'date'],
-            'check_out_date' => ['required', 'date', 'after:check_in_date'],
+            'check_out_date' => ['required', 'date', 'after_or_equal:check_in_date'],
             'discount_type' => ['nullable', 'in:fixed,percentage'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'down_payment' => ['required', 'numeric', 'min:0'],
             'payment_method' => ['required', 'in:cash,transfer,qris,debit,kartu_kredit'],
         ], [
+            'customer_name.required' => 'Nama tamu wajib diisi.',
+            'customer_phone.required' => 'No. telepon wajib diisi.',
             'customer_phone.digits_between' => 'No. Telepon harus 10-12 angka.',
+            'id_card_number.required' => 'Nomor KTP wajib diisi.',
             'id_card_number.digits' => 'Nomor KTP harus tepat 16 digit angka.',
+            'id_card_photo.required' => 'Foto KTP wajib diunggah.',
+            'id_card_photo.image' => 'Foto KTP harus berupa gambar.',
+            'id_card_photo.max' => 'Ukuran foto KTP maksimal 4MB.',
+            'room_id.required' => 'Kamar wajib dipilih.',
+            'room_id.exists' => 'Kamar yang dipilih tidak valid.',
+            'check_in_date.required' => 'Tanggal check-in wajib diisi.',
+            'check_in_date.date' => 'Tanggal check-in tidak valid.',
+            'check_out_date.required' => 'Tanggal check-out wajib diisi.',
+            'check_out_date.date' => 'Tanggal check-out tidak valid.',
+            'check_out_date.after_or_equal' => 'Tanggal check-out tidak boleh sebelum tanggal check-in.',
+            'discount_type.in' => 'Jenis diskon tidak valid.',
+            'discount_amount.numeric' => 'Nilai diskon harus berupa angka.',
+            'discount_amount.min' => 'Nilai diskon tidak boleh negatif.',
+            'down_payment.required' => 'Uang muka / DP wajib diisi.',
+            'down_payment.numeric' => 'Uang muka / DP harus berupa angka.',
+            'down_payment.min' => 'Uang muka / DP tidak boleh negatif.',
+            'payment_method.required' => 'Metode pembayaran DP wajib dipilih.',
+            'payment_method.in' => 'Metode pembayaran DP tidak valid.',
         ]);
 
         $room = Room::with('roomType')->findOrFail($data['room_id']);
 
         if ($room->status !== Room::STATUS_AVAILABLE) {
             return back()->withInput()->withErrors('Kamar tidak tersedia untuk check-in.');
+        }
+
+        // Cek bentrok tanggal (security.md §6 / PRD FR-1): kamar tidak boleh
+        // punya transaksi reserved/checked_in lain yang overlap. Reservasi yang
+        // sedang dikonversi (reservation_id) dikecualikan.
+        $conflict = Room::query()
+            ->whereKey($room->id)
+            ->availableBetween($data['check_in_date'], $data['check_out_date'])
+            ->exists();
+
+        if (! $conflict) {
+            $hasOtherBooking = \App\Models\Transaction::query()
+                ->where('room_id', $room->id)
+                ->whereIn('status', [Transaction::STATUS_RESERVED, Transaction::STATUS_CHECKED_IN])
+                ->where('check_in_date', '<', $data['check_out_date'])
+                ->where('check_out_date', '>', $data['check_in_date'])
+                ->when(! empty($data['reservation_id']), fn ($q) => $q->whereKeyNot($data['reservation_id']))
+                ->exists();
+
+            if ($hasOtherBooking) {
+                return back()->withInput()->withErrors(
+                    'Kamar sudah dipesan pada rentang tanggal tersebut. Pilih kamar atau tanggal lain.'
+                );
+            }
         }
 
         $transaction = DB::transaction(function () use ($data, $room, $request) {
@@ -141,7 +197,8 @@ class TransactionController extends Controller
 
         return redirect()
             ->route('transactions.active')
-            ->with('success', "Check-in berhasil. Kode transaksi: {$transaction->code}");
+            ->with('success', "Check-in berhasil. Kode transaksi: {$transaction->code}")
+            ->with('clear_checkin_draft', true);
     }
 
     /**
@@ -179,7 +236,7 @@ class TransactionController extends Controller
                 'total_days' => $transaction->total_days + $additionalDays,
                 'total_price' => $newTotalPrice,
                 'final_price' => $newFinalPrice,
-                'remaining_payment' => max($newFinalPrice - $transaction->totalPaid(), 0),
+                'remaining_payment' => max($newFinalPrice + $transaction->totalCharge() - $transaction->totalPaid(), 0),
             ]);
         });
 
@@ -235,7 +292,8 @@ class TransactionController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'payment_method' => ['required', 'in:cash,transfer,qris,debit,kartu_kredit'],
-            'type' => ['required', 'in:dp,pelunasan'],
+            'type' => ['required', 'in:dp,pelunasan,charge'],
+            'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         DB::transaction(function () use ($data, $transaction) {
@@ -244,12 +302,13 @@ class TransactionController extends Controller
                 'amount' => $data['amount'],
                 'payment_method' => $data['payment_method'],
                 'type' => $data['type'],
+                'notes' => $data['type'] === Payment::TYPE_CHARGE ? ($data['notes'] ?? null) : null,
                 'received_by' => auth()->id(),
                 'paid_at' => now(),
             ]);
 
             $transaction->update([
-                'remaining_payment' => max((float) $transaction->final_price - $transaction->totalPaid(), 0),
+                'remaining_payment' => max($transaction->totalBill() - $transaction->totalPaid(), 0),
             ]);
         });
 
@@ -263,12 +322,37 @@ class TransactionController extends Controller
     {
         abort_unless($transaction->status === Transaction::STATUS_CHECKED_IN, 404);
 
-        $remaining = max((float) $transaction->final_price - $transaction->totalPaid(), 0);
+        // Late checkout fee: 1x harga kamar bila lewat >3 jam dari jadwal.
+        // Dicatat sekali saja (late_fee == 0 guard), tanpa mengubah status transaksi,
+        // supaya sisa tagihan bisa dilunasi dulu sebelum check-out benar-benar selesai.
+        DB::transaction(function () use ($transaction) {
+            if ($transaction->late_fee == 0 && $transaction->isLateCheckout()) {
+                $lateFee = (float) $transaction->room_price_per_night;
+
+                $transaction->update([
+                    'late_fee' => $lateFee,
+                    'final_price' => (float) $transaction->final_price + $lateFee,
+                ]);
+
+                $transaction->update([
+                    'remaining_payment' => max($transaction->totalBill() - $transaction->totalPaid(), 0),
+                ]);
+            }
+        });
+
+        $transaction->refresh();
+
+        $remaining = max($transaction->totalBill() - $transaction->totalPaid(), 0);
 
         if ($remaining > 0) {
-            return back()->withErrors(
-                'Transaksi belum lunas. Sisa bayar: Rp ' . number_format($remaining, 0, ',', '.') . '. Lunas kan dulu sebelum check-out.'
-            );
+            $message = 'Transaksi belum lunas. Sisa bayar: Rp ' . number_format($remaining, 0, ',', '.') . '.';
+
+            if ($transaction->late_fee > 0) {
+                $message = 'Tamu terlambat check-out, dikenakan biaya tambahan Rp '
+                    . number_format($transaction->late_fee, 0, ',', '.') . '. ' . $message;
+            }
+
+            return back()->withErrors($message . ' Lunaskan dulu sebelum check-out.');
         }
 
         DB::transaction(function () use ($transaction) {

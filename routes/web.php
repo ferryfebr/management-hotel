@@ -26,9 +26,13 @@ Route::post('/logout', [AuthController::class, 'logout'])
     ->middleware('auth')
     ->name('logout');
 
-// ⚠️ HANYA UNTUK DEPLOY TANPA SSH — HAPUS SETELAH DIPAKAI (lihat docs/structure.md §4.2 Cara B).
-// Token diambil dari env DEPLOY_TOKEN. Kalau env kosong, route ini selalu 403.
-Route::post('/deploy/{token}', App\Http\Controllers\DeployController::class);
+// ============================================================================
+// DEPLOY TANPA SSH — ROUTE SENGAJA DINONAKTIFKAN (security.md §1.1 & §9).
+// Jangan biarkan aktif di production: siapa pun yang tahu token bisa menjalankan
+// migration/seeder. Kalau butuh menjalankan migration saat deploy, aktifkan
+// sementara baris di bawah, pakai sekali, lalu NONAKTIFKAN LAGI dan upload ulang.
+// ============================================================================
+// Route::post('/deploy/{token}', App\Http\Controllers\DeployController::class);
 
 Route::get('/', fn () => redirect()->route('login'));
 
@@ -51,7 +55,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/users', [UserManagementController::class, 'store'])->name('users.store');
         Route::put('/users/{user}', [UserManagementController::class, 'update'])->name('users.update');
         Route::delete('/users/{user}', [UserManagementController::class, 'destroy'])->name('users.destroy');
-        Route::get('/users/activities', [UserManagementController::class, 'activities'])->name('users.activities');
 
         // ---- Profil owner (ganti nama/email & password sendiri) ----
         Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -69,7 +72,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/rooms/{room}/status', [RoomController::class, 'updateStatus'])->name('rooms.update-status');
 
         Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
-        Route::get('/customers/check-by-id-card/{idCard}', [CustomerController::class, 'checkByCard'])->name('customers.check-id-card');
+        Route::post('/customers/check-by-id-card', [CustomerController::class, 'checkByCard'])->name('customers.check-id-card');
         Route::get('/customers/search', [CustomerController::class, 'searchByName'])->name('customers.search');
         Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
         Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
@@ -89,11 +92,19 @@ Route::middleware('auth')->group(function () {
         Route::patch('/transactions/{transaction}/transfer', [TransactionController::class, 'transferRoom'])->name('transactions.transfer');
         Route::post('/transactions/{transaction}/payments', [TransactionController::class, 'addPayment'])->name('transactions.add-payment');
         Route::patch('/transactions/{transaction}/checkout', [TransactionController::class, 'processCheckOut'])->name('transactions.checkout');
+
+        // Aktivitas sistem: owner & resepsionis (resepsionis melihat aksi operasional saja).
+        Route::get('/users/activities', [UserManagementController::class, 'activities'])->name('users.activities');
     });
 
     // ---- Room Keeper only ----
     Route::middleware('role:room_keeper')->group(function () {
         Route::get('/room-keeper', [RoomKeeperController::class, 'index'])->name('room-keeper.index');
         Route::patch('/room-keeper/{room}/status', [RoomKeeperController::class, 'updateStatus'])->name('room-keeper.update-status');
+    });
+
+    // ---- Foto bukti kerja: owner, resepsionis, room keeper ----
+    Route::middleware('role:owner,resepsionis,room_keeper')->group(function () {
+        Route::get('/room-logs/{roomLog}/photo', [RoomKeeperController::class, 'proofPhoto'])->name('room-logs.photo');
     });
 });

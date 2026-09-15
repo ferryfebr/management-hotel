@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Deploy Token (deploy tanpa SSH)
+    |--------------------------------------------------------------------------
+    |
+    | Hanya dipakai oleh DeployController saat route /deploy/{token} diaktifkan
+    | sementara. Diambil lewat config() supaya tetap benar walau config:cache
+    | dipakai di production. Kosongkan di production setelah selesai.
+    |
+    */
+
+    'deploy_token' => env('DEPLOY_TOKEN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |
@@ -65,7 +78,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Jayapura'),
 
     /*
     |--------------------------------------------------------------------------

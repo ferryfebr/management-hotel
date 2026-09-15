@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Hotel Management</title>
+    <title>Login - Kharisma Hotel</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
     <div class="bg-white p-6 sm:p-8 rounded-lg shadow w-full max-w-sm">
-        <h1 class="text-xl font-bold mb-6 text-center">🏨 Hotel Manager</h1>
+        <h1 class="text-xl font-bold mb-6 text-center">Kharisma Hotel</h1>
 
         @if($errors->any())
             <div class="mb-4 rounded bg-red-100 text-red-800 px-4 py-2 text-sm">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\Payment;
 use App\Models\RoomLog;
 use App\Models\RoomTransfer;
@@ -53,6 +54,12 @@ class UserManagementController extends Controller
             'is_active' => true,
         ]);
 
+        ActivityLog::record(
+            'Tambah akun',
+            ActivityLog::CATEGORY_AKUN,
+            "{$data['name']} (" . User::roleLabel($data['role']) . ')'
+        );
+
         return redirect()->route('users.index')
             ->with('success', 'Akun ' . User::roleLabel($data['role']) . ' berhasil ditambahkan.');
     }
@@ -85,6 +92,12 @@ class UserManagementController extends Controller
             $user->update(['password' => Hash::make($data['password'])]);
         }
 
+        ActivityLog::record(
+            'Ubah akun',
+            ActivityLog::CATEGORY_AKUN,
+            "{$user->name} (" . User::roleLabel($user->role) . ')' . ($request->boolean('is_active') ? '' : ' — dinonaktifkan')
+        );
+
         return redirect()->route('users.index')
             ->with('success', 'Akun berhasil diperbarui.');
     }
@@ -96,6 +109,12 @@ class UserManagementController extends Controller
         // Gunakan nonaktifkan (soft-deactivate), bukan hapus permanen,
         // agar histori aktivitas akun tetap terbaca untuk audit.
         $user->update(['is_active' => false]);
+
+        ActivityLog::record(
+            'Nonaktifkan akun',
+            ActivityLog::CATEGORY_AKUN,
+            "{$user->name} (" . User::roleLabel($user->role) . ')'
+        );
 
         return redirect()->route('users.index')
             ->with('success', 'Akun dinonaktifkan. Histori aktivitasnya tetap tersimpan.');
@@ -111,9 +130,8 @@ class UserManagementController extends Controller
         $userId = $request->integer('user');
 
         // Filter nama user untuk tampilan dropdown; null => semua.
-        $userPool = User::whereIn('role', [User::ROLE_RESEPSIONIS, User::ROLE_ROOM_KEEPER])
-            ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+        // Owner ikut ditampilkan agar aktivitasnya terlihat sinkron.
+        $userPool = User::orderBy('name')->get(['id', 'name', 'role']);
 
         $rows = $this->collectActivities($userId);
 
@@ -134,20 +152,23 @@ class UserManagementController extends Controller
     }
 
     /**
-     * Bangun satu daftar aktivitas gabungan dari 5 sumber, diurutkan terbaru.
+     * Bangun satu daftar aktivitas gabungan: aksi dari tabel domain
+     * (transaksi, pembayaran, perpanjangan, transfer, log kamar) + audit log
+     * manual (kamar/jenis kamar/akun), diurutkan terbaru. Semua role termasuk
+     * owner disertakan agar histori tetap sinkron.
      */
     private function collectActivities(?int $userId): Collection
     {
         $items = collect();
-        $staff = [User::ROLE_RESEPSIONIS, User::ROLE_ROOM_KEEPER];
+        $limit = 200;
 
         // 1) Transaksi (reservasi / check-in / check-out / dsb)
         Transaction::query()
             ->with(['user:id,name,role', 'customer:id,name', 'room:id,room_number'])
-            ->whereHas('user', fn ($q) => $q->whereIn('role', $staff))
+            ->whereNotNull('user_id')
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
             ->latest()
-            ->limit(200)
+            ->limit($limit)
             ->get()
             ->each(function (Transaction $t) use (&$items) {
                 $action = match ($t->status) {
@@ -161,7 +182,7 @@ class UserManagementController extends Controller
                 $items->push($this->row(
                     $t->user,
                     $action,
-                    "{$t->code} — {$t->customer?->name} ({$t->room?->room_number})",
+                    ($t->customer?->name ?? '-') . ($t->room?->room_number ? " — Kamar {$t->room->room_number}" : ''),
                     $t->created_at,
                     'transaksi'
                 ));
@@ -169,18 +190,23 @@ class UserManagementController extends Controller
 
         // 2) Pembayaran
         Payment::query()
-            ->with(['receiver:id,name,role', 'transaction:id,code'])
+            ->with(['receiver:id,name,role', 'transaction:id,code,customer_id', 'transaction.customer:id,name'])
             ->whereNotNull('received_by')
-            ->whereHas('receiver', fn ($q) => $q->whereIn('role', $staff))
             ->when($userId, fn ($q) => $q->where('received_by', $userId))
             ->latest()
-            ->limit(200)
+            ->limit($limit)
             ->get()
             ->each(function (Payment $p) use (&$items) {
+                $label = match ($p->type) {
+                    'pelunasan' => 'Menerima pelunasan',
+                    'refund' => 'Memproses refund',
+                    'charge' => 'Menambah charge',
+                    default => 'Mencatat pembayaran (DP)',
+                };
                 $items->push($this->row(
                     $p->receiver,
-                    $p->type === 'pelunasan' ? 'Menerima pelunasan' : 'Mencatat pembayaran (DP)',
-                    "{$p->transaction?->code} — Rp " . number_format((float) $p->amount, 0, ',', '.'),
+                    $label,
+                    ($p->transaction?->customer?->name ?? '-') . ' — Rp ' . number_format((float) $p->amount, 0, ',', '.'),
                     $p->paid_at,
                     'pembayaran'
                 ));
@@ -188,18 +214,17 @@ class UserManagementController extends Controller
 
         // 3) Perpanjangan menginap
         StayExtension::query()
-            ->with(['extendedBy:id,name,role', 'transaction:id,code'])
+            ->with(['extendedBy:id,name,role', 'transaction:id,code,customer_id', 'transaction.customer:id,name'])
             ->whereNotNull('extended_by')
-            ->whereHas('extendedBy', fn ($q) => $q->whereIn('role', $staff))
             ->when($userId, fn ($q) => $q->where('extended_by', $userId))
             ->latest()
-            ->limit(200)
+            ->limit($limit)
             ->get()
             ->each(function (StayExtension $e) use (&$items) {
                 $items->push($this->row(
                     $e->extendedBy,
                     'Perpanjang masa inap',
-                    "{$e->transaction?->code} (+{$e->additional_days} malam)",
+                    ($e->transaction?->customer?->name ?? '-') . " (+{$e->additional_days} malam)",
                     $e->created_at,
                     'perpanjangan'
                 ));
@@ -207,18 +232,17 @@ class UserManagementController extends Controller
 
         // 4) Transfer kamar
         RoomTransfer::query()
-            ->with(['transferredBy:id,name,role', 'fromRoom:id,room_number', 'toRoom:id,room_number'])
+            ->with(['transferredBy:id,name,role', 'fromRoom:id,room_number', 'toRoom:id,room_number', 'transaction:id,code,customer_id', 'transaction.customer:id,name'])
             ->whereNotNull('transferred_by')
-            ->whereHas('transferredBy', fn ($q) => $q->whereIn('role', $staff))
             ->when($userId, fn ($q) => $q->where('transferred_by', $userId))
             ->latest()
-            ->limit(200)
+            ->limit($limit)
             ->get()
             ->each(function (RoomTransfer $r) use (&$items) {
                 $items->push($this->row(
                     $r->transferredBy,
                     'Pindah kamar',
-                    "{$r->fromRoom?->room_number} → {$r->toRoom?->room_number}",
+                    ($r->transaction?->customer?->name ?? '-') . ": {$r->fromRoom?->room_number} → {$r->toRoom?->room_number}",
                     $r->transferred_at,
                     'transfer'
                 ));
@@ -228,10 +252,9 @@ class UserManagementController extends Controller
         RoomLog::query()
             ->with(['user:id,name,role', 'room:id,room_number'])
             ->whereNotNull('user_id')
-            ->whereHas('user', fn ($q) => $q->whereIn('role', $staff))
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
             ->latest()
-            ->limit(200)
+            ->limit($limit)
             ->get()
             ->each(function (RoomLog $log) use (&$items) {
                 $label = match ($log->status_reported) {
@@ -249,7 +272,54 @@ class UserManagementController extends Controller
                 ));
             });
 
-        return $items->sortByDesc('time')->values();
+        // 6) Audit log manual (tambah/ubah kamar, jenis kamar, akun, dsb)
+        ActivityLog::query()
+            ->with('user:id,name,role')
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->each(function (ActivityLog $log) use (&$items) {
+                $items->push($this->row(
+                    $log->user,
+                    $log->action,
+                    $log->description ?? '',
+                    $log->created_at,
+                    $log->category
+                ));
+            });
+
+        $items = $items->sortByDesc('time')->values();
+
+        return $this->applyRoleVisibility($items);
+    }
+
+    /**
+     * Resepsionis hanya boleh melihat aktivitas operasional. Aksi internal
+     * owner (kelola jenis kamar, kelola akun, tambah/ubah/hapus kamar)
+     * disembunyikan. Owner melihat semuanya.
+     */
+    private function applyRoleVisibility(Collection $items): Collection
+    {
+        if (auth()->user()?->isOwner()) {
+            return $items;
+        }
+
+        $hiddenCategories = [
+            ActivityLog::CATEGORY_JENIS_KAMAR,
+            ActivityLog::CATEGORY_AKUN,
+        ];
+
+        $hiddenRoomActions = ['Tambah kamar', 'Ubah data kamar', 'Hapus kamar'];
+
+        return $items->reject(function ($a) use ($hiddenCategories, $hiddenRoomActions) {
+            if (in_array($a['type'], $hiddenCategories, true)) {
+                return true;
+            }
+
+            return $a['type'] === ActivityLog::CATEGORY_KAMAR
+                && in_array($a['action'], $hiddenRoomActions, true);
+        })->values();
     }
 
     private function row(?User $user, string $action, string $detail, $time, string $type): array

@@ -6,92 +6,114 @@
 @endphp
 
 @section('content')
+@if($rooms->isEmpty())
+    <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm mb-4 max-w-2xl">
+        Tidak ada kamar yang tersedia saat ini. Semua kamar sedang terisi, kotor, atau dalam perbaikan.
+        Silakan selesaikan/bersihkan kamar lebih dulu di halaman Status Kamar.
+    </div>
+@endif
 <div class="bg-white rounded-lg shadow p-6 max-w-2xl">
-    <form method="POST" action="{{ route('transactions.checkin') }}" enctype="multipart/form-data" class="space-y-4 text-sm">
+    <form method="POST" action="{{ route('transactions.checkin') }}" enctype="multipart/form-data" class="space-y-4 text-sm" x-data="{ discountType: '{{ old('discount_type') }}' }">
         @csrf
+        @if($reservation)
+            <input type="hidden" name="reservation_id" value="{{ $reservation->id }}">
+        @endif
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="relative">
                 <label class="block mb-1">Nama Tamu</label>
-                <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $reservation?->customer->name ?? '') }}" placeholder="Mulai ketik nama..." autocomplete="off" required class="w-full border rounded px-3 py-2">
+                <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $reservation?->customer->name ?? '') }}" placeholder="Mulai ketik nama..." autocomplete="off" class="w-full border rounded px-3 py-2 @error('customer_name') border-red-500 @enderror">
                 <ul id="customer_results" class="hidden absolute z-20 w-full bg-white border rounded shadow-lg mt-1 text-xs max-h-48 overflow-y-auto"></ul>
+                @error('customer_name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block mb-1">No. Telepon</label>
-                <input type="text" name="customer_phone" id="customer_phone" value="{{ old('customer_phone', $reservation?->customer->phone ?? '') }}" required class="w-full border rounded px-3 py-2">
+                <input type="text" name="customer_phone" id="customer_phone" value="{{ old('customer_phone', $reservation?->customer->phone ?? '') }}" class="w-full border rounded px-3 py-2 @error('customer_phone') border-red-500 @enderror">
+                @error('customer_phone')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-1">Nomor KTP</label>
-                <input type="number" name="id_card_number" id="id_card_number" value="{{ old('id_card_number') }}" required class="w-full border rounded px-3 py-2">
+                <input type="number" name="id_card_number" id="id_card_number" value="{{ old('id_card_number') }}" class="w-full border rounded px-3 py-2 @error('id_card_number') border-red-500 @enderror">
                 <div id="id_card_hint" class="mt-1 text-xs hidden"></div>
+                @error('id_card_number')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block mb-1">Foto KTP</label>
-                <input type="file" name="id_card_photo" id="id_card_photo" accept="image/*" required class="hidden">
+                <input type="file" name="id_card_photo" id="id_card_photo" accept="image/*" class="hidden">
                 <div class="flex gap-2 flex-wrap">
                     <x-button variant="primary" type="button" id="btn_camera">Ambil Foto</x-button>
                     <x-button variant="secondary" type="button" id="btn_gallery">Dari Galeri</x-button>
                 </div>
                 <img id="id_card_preview" class="mt-2 h-32 object-cover rounded border hidden" alt="Pratinjau KTP">
+                @error('id_card_photo')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
         </div>
 
         <div>
             <label class="block mb-1">Kamar</label>
-            <select name="room_id" required class="w-full border rounded px-3 py-2">
-                @foreach($rooms as $room)
+            <select name="room_id" class="w-full border rounded px-3 py-2 @error('room_id') border-red-500 @enderror">
+                @forelse($rooms as $room)
                     <option value="{{ $room->id }}" @selected(old('room_id', $reservation?->room_id) == $room->id)>
                         Kamar {{ $room->room_number }} — {{ $room->roomType->name }} (Rp {{ number_format($room->roomType->price, 0, ',', '.') }}/malam)
                     </option>
-                @endforeach
+                @empty
+                    <option value="" disabled selected>Belum ada kamar tersedia</option>
+                @endforelse
             </select>
+            @error('room_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-1">Tanggal Check-in</label>
-                <input type="date" name="check_in_date" value="{{ old('check_in_date', $reservation?->check_in_date->format('Y-m-d') ?? '') }}" required class="w-full border rounded px-3 py-2">
+                <input type="date" name="check_in_date" value="{{ old('check_in_date', $reservation?->check_in_date->format('Y-m-d') ?? '') }}" class="w-full border rounded px-3 py-2 @error('check_in_date') border-red-500 @enderror">
+                @error('check_in_date')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block mb-1">Tanggal Check-out</label>
-                <input type="date" name="check_out_date" value="{{ old('check_out_date', $reservation?->check_out_date->format('Y-m-d') ?? '') }}" required class="w-full border rounded px-3 py-2">
+                <input type="date" name="check_out_date" value="{{ old('check_out_date', $reservation?->check_out_date->format('Y-m-d') ?? '') }}" class="w-full border rounded px-3 py-2 @error('check_out_date') border-red-500 @enderror">
+                @error('check_out_date')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
                 <label class="block mb-1">Jenis Diskon</label>
-                <select name="discount_type" class="w-full border rounded px-3 py-2">
+                <select name="discount_type" x-model="discountType" class="w-full border rounded px-3 py-2 @error('discount_type') border-red-500 @enderror">
                     <option value="">Tanpa Diskon</option>
                     <option value="fixed">Nominal (Rp)</option>
                     <option value="percentage">Persentase (%)</option>
                 </select>
+                @error('discount_type')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
-            <div>
+            <div x-show="discountType !== ''" x-effect="if (discountType === '') $el.querySelector('input[name=discount_amount]').value = '0'">
                 <label class="block mb-1">Nilai Diskon</label>
-                <input type="number" name="discount_amount" min="0" value="0" class="w-full border rounded px-3 py-2">
+                <input type="text" inputmode="numeric" name="discount_amount" value="0" class="w-full border rounded px-3 py-2 @error('discount_amount') border-red-500 @enderror">
+                @error('discount_amount')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block mb-1">Uang Muka / DP (Rp)</label>
-                <input type="number" name="down_payment" min="0" value="0" required class="w-full border rounded px-3 py-2">
+                <input type="text" inputmode="numeric" name="down_payment" value="0" class="w-full border rounded px-3 py-2 @error('down_payment') border-red-500 @enderror">
+                @error('down_payment')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
         </div>
 
         <div>
             <label class="block mb-1">Metode Pembayaran DP</label>
-            <select name="payment_method" required class="w-full border rounded px-3 py-2">
+            <select name="payment_method" class="w-full border rounded px-3 py-2 @error('payment_method') border-red-500 @enderror">
                 <option value="cash">Tunai</option>
                 <option value="transfer">Transfer</option>
                 <option value="qris">QRIS</option>
                 <option value="debit">Kartu Debit</option>
                 <option value="kartu_kredit">Kartu Kredit</option>
             </select>
+            @error('payment_method')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
         </div>
 
-        <x-button variant="primary" type="submit" block>Proses Check-in</x-button>
+        <x-button variant="primary" type="submit" block :disabled="$rooms->isEmpty()">Proses Check-in</x-button>
     </form>
 </div>
 
@@ -241,7 +263,8 @@
     // ==== Notif pelanggan lama via NIK KTP (real-time saat ketik) ====
     var nikInput = document.getElementById('id_card_number');
     var hint = document.getElementById('id_card_hint');
-    var hintBaseUrl = '{{ route("customers.check-id-card", "__NIK__") }}';
+    var hintUrl = '{{ route("customers.check-id-card") }}';
+    var csrfToken = '{{ csrf_token() }}';
     var nikTimer = null;
 
     if (nikInput && hint) {
@@ -251,7 +274,15 @@
                 hint.classList.add('hidden');
                 return;
             }
-            fetch(hintBaseUrl.replace('__NIK__', nik), { headers: { 'Accept': 'application/json' } })
+            fetch(hintUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({ id_card_number: nik }),
+            })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.found) {

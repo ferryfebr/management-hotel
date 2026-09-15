@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Hotel Management')</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
 <div class="flex min-h-screen">
@@ -56,6 +57,9 @@
         $keeperNav = [
             $nav('sparkles', 'room-keeper.index', 'room-keeper.*', 'Status Kamar'),
         ];
+        $activityNav = [
+            $nav('clock', 'users.activities', 'users.activities', 'Aktivitas'),
+        ];
 
         $navClass = fn($active) => $active
             ? 'flex items-center gap-3 px-3 py-2 rounded-lg bg-indigo-600 text-white font-medium'
@@ -99,6 +103,11 @@
 
                 @if(auth()->user()->isResepsionis())
                     @foreach($staffNav as $item)
+                        <a href="{{ route($item['route']) }}" class="{{ $navClass(request()->routeIs($item['pattern'])) }}">
+                            {!! $item['icon'] !!} {{ $item['label'] }}
+                        </a>
+                    @endforeach
+                    @foreach($activityNav as $item)
                         <a href="{{ route($item['route']) }}" class="{{ $navClass(request()->routeIs($item['pattern'])) }}">
                             {!! $item['icon'] !!} {{ $item['label'] }}
                         </a>
@@ -204,5 +213,10 @@
     if (sidebar) sidebar.querySelectorAll('nav a').forEach(function (a) { a.addEventListener('click', closeNav); });
 })();
 </script>
+@if(session('clear_checkin_draft'))
+<script>
+    try { sessionStorage.removeItem('checkin_id_card_photo'); } catch (e) {}
+</script>
+@endif
 </body>
 </html>

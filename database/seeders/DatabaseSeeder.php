@@ -12,6 +12,17 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Pengaman: seeder ini berisi password contoh "password" dan data dummy.
+        // Jangan pernah dijalankan di production (security.md §4 & §9).
+        if (app()->environment('production')) {
+            $this->command?->error(
+                'DatabaseSeeder berisi kredensial contoh dan tidak boleh dijalankan di production. ' .
+                'Gunakan ProductionSeeder dengan kredensial dari .env.'
+            );
+
+            return;
+        }
+
         // Akun awal per role — DEVELOPMENT ONLY. Password di sini ('password') tidak aman.
         // Untuk production pakai ProductionSeeder yang ambil kredensial dari .env (PROD_*).
         User::create([

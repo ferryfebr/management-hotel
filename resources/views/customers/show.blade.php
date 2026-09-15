@@ -33,6 +33,14 @@
             </div>
             <x-button variant="primary" type="submit" block>Simpan</x-button>
         </form>
+
+        @if(auth()->user()->isOwner())
+            <form method="POST" action="{{ route('customers.destroy', $customer) }}" class="mt-3"
+                  onsubmit="return confirm('Hapus data pelanggan {{ $customer->name }}? Data masih tersimpan untuk audit.')">
+                @csrf @method('DELETE')
+                <x-button variant="danger" type="submit" block>Hapus Pelanggan</x-button>
+            </form>
+        @endif
     </div>
 
     <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

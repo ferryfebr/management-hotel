@@ -1,2 +1,12 @@
 *
 !.gitignore
+!.htaccess
+!index.html
+!id-cards/
+!id-cards/.gitignore
+!id-cards/.htaccess
+!id-cards/index.html
+!room-proofs/
+!room-proofs/.gitignore
+!room-proofs/.htaccess
+!room-proofs/index.html

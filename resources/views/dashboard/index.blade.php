@@ -2,7 +2,8 @@
 @section('title', 'Dashboard')
 
 @section('content')
-<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+<p class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Status Kamar</p>
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <span class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mb-3">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></svg>
@@ -12,7 +13,7 @@
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <span class="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-3">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/></svg>
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
         </span>
         <p class="text-2xl font-bold">{{ $roomStats['available'] }}</p>
         <p class="text-xs text-gray-500 mt-0.5">Tersedia</p>
@@ -26,7 +27,7 @@
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <span class="w-10 h-10 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center mb-3">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"/></svg>
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
         </span>
         <p class="text-2xl font-bold">{{ $roomStats['dirty'] }}</p>
         <p class="text-xs text-gray-500 mt-0.5">Kotor</p>
@@ -40,6 +41,30 @@
     </div>
 </div>
 
+<p class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 mt-8">Aktivitas &amp; Pendapatan</p>
+<form method="GET" class="flex flex-wrap gap-3 items-end mb-4 text-sm">
+    <div>
+        <label class="block mb-1 text-xs text-gray-500">Periode</label>
+        <select name="preset" onchange="this.form.start_date.value=''; this.form.end_date.value=''; this.form.submit()"
+                class="border border-gray-300 rounded-md px-3 py-2">
+            <option value="today" @selected($preset === 'today')>Hari Ini</option>
+            <option value="week" @selected($preset === 'week')>Minggu Ini</option>
+            <option value="month" @selected($preset === 'month')>Bulan Ini</option>
+            <option value="custom" @selected($preset === 'custom') disabled>Rentang Kustom</option>
+        </select>
+    </div>
+    <div>
+        <label class="block mb-1 text-xs text-gray-500">Dari Tanggal</label>
+        <input type="date" name="start_date" value="{{ old('start_date', request('start_date')) }}"
+               class="border border-gray-300 rounded-md px-3 py-2">
+    </div>
+    <div>
+        <label class="block mb-1 text-xs text-gray-500">Sampai Tanggal</label>
+        <input type="date" name="end_date" value="{{ old('end_date', request('end_date')) }}"
+               class="border border-gray-300 rounded-md px-3 py-2">
+    </div>
+    <x-button variant="primary" type="submit">Filter</x-button>
+</form>
 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <span class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3">
@@ -59,8 +84,18 @@
         <span class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
         </span>
-        <p class="text-2xl font-bold">Rp {{ number_format($revenueThisMonth, 0, ',', '.') }}</p>
-        <p class="text-xs text-gray-500 mt-0.5">Pendapatan Bulan Ini</p>
+        <p class="text-2xl font-bold">Rp {{ number_format($revenue, 0, ',', '.') }}</p>
+        <p class="text-xs text-gray-500 mt-0.5">Pendapatan
+            @if($preset === 'today')
+                Hari Ini
+            @elseif($preset === 'week')
+                Minggu Ini
+            @elseif($preset === 'custom')
+                {{ $revenueStart->format('d M Y') }} — {{ $revenueEnd->format('d M Y') }}
+            @else
+                Bulan Ini
+            @endif
+        </p>
     </div>
 </div>
 

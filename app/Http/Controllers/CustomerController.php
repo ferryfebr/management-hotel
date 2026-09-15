@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\Customer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -43,16 +44,37 @@ class CustomerController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        $changes = [];
+
+        if ($customer->rating_status !== $data['rating_status']) {
+            $changes[] = "status: {$customer->rating_status} → {$data['rating_status']}";
+        }
+
+        if (($customer->notes ?? '') !== ($data['notes'] ?? '')) {
+            $changes[] = 'catatan diubah';
+        }
+
         $customer->update($data);
+
+        ActivityLog::record(
+            'Ubah data pelanggan',
+            ActivityLog::CATEGORY_PELANGGAN,
+            $customer->name . ($changes ? ' — ' . implode(', ', $changes) : '')
+        );
 
         return back()->with('success', 'Data pelanggan berhasil diperbarui.');
     }
 
     public function destroy(Customer $customer): RedirectResponse
     {
+        $detail = $customer->name . ($customer->phone ? " ({$customer->phone})" : '');
+
         $customer->delete(); // soft delete
 
-        return back()->with('success', 'Data pelanggan dihapus (masih tersimpan untuk audit).');
+        ActivityLog::record('Hapus pelanggan', ActivityLog::CATEGORY_PELANGGAN, $detail);
+
+        return redirect()->route('customers.index')
+            ->with('success', 'Data pelanggan dihapus (masih tersimpan untuk audit).');
     }
 
     /**
@@ -95,10 +117,12 @@ class CustomerController extends Controller
     /**
      * Cek keberadaan customer dari nomor KTP (untuk notif "pelanggan lama" real-time).
      * Data dinilai cukup: ditemukan/ditemukan + nama + status rating.
+     *
+     * POST (bukan GET) supaya NIK tidak muncul di URL/access log (security.md §2).
      */
-    public function checkByCard(string $idCard): JsonResponse
+    public function checkByCard(Request $request): JsonResponse
     {
-        $idCard = preg_replace('/\D/', '', $idCard);
+        $idCard = preg_replace('/\D/', '', (string) $request->input('id_card_number'));
 
         if (strlen($idCard) !== 16) {
             return response()->json(['found' => false, 'valid' => false]);

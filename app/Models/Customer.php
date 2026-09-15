@@ -55,9 +55,10 @@ class Customer extends Model
         'phone',
         'id_card_number',
         'id_card_photo',
-        'visit_count',
         'rating_status',
         'notes',
+        // CATATAN: 'visit_count' sengaja TIDAK fillable (security.md §7).
+        // Diubah hanya lewat increment() di TransactionController, bukan mass-assign.
     ];
 
     public function transactions(): HasMany

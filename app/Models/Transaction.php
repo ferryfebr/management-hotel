@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property numeric $final_price
  * @property numeric $down_payment
  * @property numeric $remaining_payment
+ * @property numeric $late_fee
  * @property string $status
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -77,6 +78,11 @@ class Transaction extends Model
     public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_NO_SHOW = 'no_show';
 
+    /** Jam check-out terjadwal (12:00 siang) pada tanggal check_out_date. */
+    public const CHECKOUT_HOUR = 12;
+    /** Toleransi keterlambatan sebelum dikenakan late fee (3 jam). */
+    public const LATE_GRACE_HOURS = 3;
+
     protected $fillable = [
         'code',
         'customer_id',
@@ -92,6 +98,7 @@ class Transaction extends Model
         'final_price',
         'down_payment',
         'remaining_payment',
+        'late_fee',
         'status',
     ];
 
@@ -106,6 +113,7 @@ class Transaction extends Model
             'final_price' => 'decimal:2',
             'down_payment' => 'decimal:2',
             'remaining_payment' => 'decimal:2',
+            'late_fee' => 'decimal:2',
         ];
     }
 
@@ -163,8 +171,44 @@ class Transaction extends Model
             ->sum('amount');
     }
 
+    public function totalCharge(): float
+    {
+        return (float) $this->payments()
+            ->where('type', Payment::TYPE_CHARGE)
+            ->sum('amount');
+    }
+
+    public function totalBill(): float
+    {
+        return (float) $this->final_price + $this->totalCharge();
+    }
+
     public function isFullyPaid(): bool
     {
-        return $this->totalPaid() >= (float) $this->final_price;
+        return $this->totalPaid() >= $this->totalBill();
+    }
+
+    /**
+     * Waktu check-out terjadwal: tanggal check_out_date jam 12:00.
+     */
+    public function scheduledCheckoutAt(): \Illuminate\Support\Carbon
+    {
+        return $this->check_out_date->copy()->setTime(self::CHECKOUT_HOUR, 0);
+    }
+
+    /**
+     * True bila sekarang sudah lewat toleransi (check-out terjadwal + 3 jam).
+     */
+    public function isLateCheckout(): bool
+    {
+        return now()->gt($this->scheduledCheckoutAt()->addHours(self::LATE_GRACE_HOURS));
+    }
+
+    /**
+     * Biaya keterlambatan yang akan dikenakan: 1x room_price_per_night.
+     */
+    public function potentialLateFee(): float
+    {
+        return $this->isLateCheckout() ? (float) $this->room_price_per_night : 0.0;
     }
 }

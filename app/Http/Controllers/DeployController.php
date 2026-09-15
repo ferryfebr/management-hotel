@@ -19,7 +19,7 @@ class DeployController extends Controller
 {
     public function __invoke(Request $request, string $token)
     {
-        $secret = env('DEPLOY_TOKEN');
+        $secret = config('app.deploy_token');
 
         // Tanpa token di .env atau token salah -> tolak.
         if (! $secret || ! hash_equals($secret, $token)) {

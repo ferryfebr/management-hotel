@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $user_id
  * @property string $status_reported
  * @property string|null $notes
+ * @property string|null $proof_photo
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Models\Room $room
@@ -37,6 +38,7 @@ class RoomLog extends Model
         'user_id',
         'status_reported',
         'notes',
+        'proof_photo',
     ];
 
     public function room(): BelongsTo

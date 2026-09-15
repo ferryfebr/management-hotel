@@ -25,21 +25,21 @@ class ProductionSeeder extends Seeder
     {
         $accounts = [
             [
-                'name' => env('PROD_OWNER_NAME', 'Owner'),
-                'email' => env('PROD_OWNER_EMAIL'),
-                'password' => env('PROD_OWNER_PASSWORD'),
+                'name' => config('production.owner.name', 'Owner'),
+                'email' => config('production.owner.email'),
+                'password' => config('production.owner.password'),
                 'role' => User::ROLE_OWNER,
             ],
             [
-                'name' => env('PROD_RESEPSIONIS_NAME', 'Resepsionis'),
-                'email' => env('PROD_RESEPSIONIS_EMAIL'),
-                'password' => env('PROD_RESEPSIONIS_PASSWORD'),
+                'name' => config('production.resepsionis.name', 'Resepsionis'),
+                'email' => config('production.resepsionis.email'),
+                'password' => config('production.resepsionis.password'),
                 'role' => User::ROLE_RESEPSIONIS,
             ],
             [
-                'name' => env('PROD_ROOM_KEEPER_NAME', 'Room Keeper'),
-                'email' => env('PROD_ROOM_KEEPER_EMAIL'),
-                'password' => env('PROD_ROOM_KEEPER_PASSWORD'),
+                'name' => config('production.room_keeper.name', 'Room Keeper'),
+                'email' => config('production.room_keeper.email'),
+                'password' => config('production.room_keeper.password'),
                 'role' => User::ROLE_ROOM_KEEPER,
             ],
         ];

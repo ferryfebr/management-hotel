@@ -1,0 +1,11 @@
+# Folder ini menyimpan data PII (foto KTP) & foto bukti kerja.
+# Lindungi dari directory listing dan akses langsung bila document root salah
+# diarahkan ke root project (lihat docs/security.md §1.2 & §2).
+Options -Indexes
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
