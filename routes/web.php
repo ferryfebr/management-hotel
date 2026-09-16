@@ -86,6 +86,8 @@ Route::middleware('auth')->group(function () {
         Route::patch('/reservations/{reservation}/no-show', [ReservationController::class, 'markNoShow'])->name('reservations.no-show');
 
         Route::get('/transactions/active', [TransactionController::class, 'active'])->name('transactions.active');
+        Route::get('/transactions/history', [TransactionController::class, 'history'])->name('transactions.history');
+        Route::get('/transactions/{transaction}/history', [TransactionController::class, 'historyDetail'])->name('transactions.history.detail');
         Route::get('/transactions/checkin', [TransactionController::class, 'createCheckInForm'])->name('transactions.checkin-form');
         Route::post('/transactions/checkin', [TransactionController::class, 'createCheckIn'])->name('transactions.checkin');
         Route::patch('/transactions/{transaction}/extend', [TransactionController::class, 'extendStay'])->name('transactions.extend');

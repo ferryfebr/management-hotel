@@ -51,6 +51,7 @@
             $nav('door', 'rooms.index', 'rooms.*', 'Kamar'),
             $nav('calendar', 'reservations.index', 'reservations.*', 'Reservasi'),
             $nav('users', 'transactions.active', 'transactions.active*', 'Tamu Aktif'),
+            $nav('clock', 'transactions.history', 'transactions.history*', 'Riwayat Transaksi'),
             $nav('checkin', 'transactions.checkin-form', 'transactions.checkin*', 'Check-in Baru'),
             $nav('clipboard', 'customers.index', 'customers.*', 'Pelanggan'),
         ];

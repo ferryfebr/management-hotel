@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Room;
+use App\Models\RoomLog;
 use App\Models\RoomTransfer;
 use App\Models\StayExtension;
 use App\Models\Transaction;
@@ -367,5 +368,156 @@ class TransactionController extends Controller
         return redirect()
             ->route('transactions.active')
             ->with('success', 'Check-out berhasil diselesaikan.');
+    }
+
+    /**
+     * Riwayat transaksi yang sudah selesai (checked_out).
+     * Filter opsional berdasarkan rentang tanggal check-out; default semua data terbaru.
+     */
+    public function history(Request $request): View
+    {
+        $startDate = $request->date('start_date');
+        $endDate = $request->date('end_date');
+
+        $transactions = Transaction::with(['customer:id,name', 'room:id,room_number,room_type_id', 'room.roomType:id,name'])
+            ->where('status', Transaction::STATUS_CHECKED_OUT)
+            ->when($startDate && $endDate, fn ($q) => $q->whereBetween('check_out_date', [$startDate, $endDate]))
+            ->orderByDesc('check_out_date')
+            ->orderByDesc('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('transactions.history', compact('transactions', 'startDate', 'endDate'));
+    }
+
+    /**
+     * Detail satu transaksi selesai + timeline aktivitas yang menyentuhnya.
+     */
+    public function historyDetail(Transaction $transaction): View
+    {
+        abort_unless($transaction->status === Transaction::STATUS_CHECKED_OUT, 404);
+
+        $transaction->load([
+            'customer',
+            'room.roomType',
+            'payments.receiver:id,name,role',
+            'stayExtensions.extendedBy:id,name,role',
+            'roomTransfers.transferredBy:id,name,role',
+            'roomTransfers.fromRoom:id,room_number',
+            'roomTransfers.toRoom:id,room_number',
+            'roomTransfers.transaction:id,code,customer_id',
+            'roomTransfers.transaction.customer:id,name',
+        ]);
+
+        // Log kebersihan (room keeper) untuk kamar yang sama, dalam rentang menginap (opsi b).
+        $roomLogs = RoomLog::with(['user:id,name,role', 'room:id,room_number'])
+            ->where('room_id', $transaction->room_id)
+            ->whereBetween('created_at', [
+                $transaction->check_in_date->copy()->startOfDay(),
+                $transaction->check_out_date->copy()->endOfDay(),
+            ])
+            ->orderBy('created_at')
+            ->get();
+
+        $timeline = $this->buildHistoryTimeline($transaction, $roomLogs);
+
+        return view('transactions.history-detail', compact('transaction', 'timeline'));
+    }
+
+    /**
+     * Gabungkan aktivitas transaksi + log kamar jadi satu timeline urut waktu.
+     */
+    private function buildHistoryTimeline(Transaction $transaction, $roomLogs): \Illuminate\Support\Collection
+    {
+        $items = collect();
+
+        $push = function (?object $user, string $action, string $detail, $time, string $type) use (&$items) {
+            $items->push([
+                'user' => $user,
+                'action' => $action,
+                'detail' => $detail,
+                'time' => $time,
+                'type' => $type,
+            ]);
+        };
+
+        // 1) Transaksi: check-in & check-out
+        $push(
+            $transaction->user,
+            'Check-in tamu',
+            ($transaction->customer?->name ?? '-') . ($transaction->room?->room_number ? " — Kamar {$transaction->room->room_number}" : ''),
+            $transaction->created_at,
+            'transaksi'
+        );
+
+        if ($transaction->status === Transaction::STATUS_CHECKED_OUT) {
+            $push(
+                $transaction->user,
+                'Check-out tamu',
+                ($transaction->customer?->name ?? '-') . ($transaction->room?->room_number ? " — Kamar {$transaction->room->room_number}" : ''),
+                $transaction->updated_at,
+                'transaksi'
+            );
+        }
+
+        // 2) Pembayaran
+        foreach ($transaction->payments as $p) {
+            $label = match ($p->type) {
+                'pelunasan' => 'Menerima pelunasan',
+                'refund' => 'Memproses refund',
+                'charge' => 'Menambah charge',
+                default => 'Mencatat pembayaran (DP)',
+            };
+
+            $push(
+                $p->receiver,
+                $label,
+                'Rp ' . number_format((float) $p->amount, 0, ',', '.') . ($p->notes ? ' — ' . $p->notes : ''),
+                $p->paid_at,
+                'pembayaran'
+            );
+        }
+
+        // 3) Perpanjangan masa inap
+        foreach ($transaction->stayExtensions as $e) {
+            $push(
+                $e->extendedBy,
+                'Perpanjang masa inap',
+                "+{$e->additional_days} malam (" . \Illuminate\Support\Carbon::parse($e->old_checkout_date)->format('d M Y') . ' → ' . \Illuminate\Support\Carbon::parse($e->new_checkout_date)->format('d M Y') . ')',
+                $e->created_at,
+                'perpanjangan'
+            );
+        }
+
+        // 4) Pindah kamar
+        foreach ($transaction->roomTransfers as $r) {
+            $push(
+                $r->transferredBy,
+                'Pindah kamar',
+                "{$r->fromRoom?->room_number} → {$r->toRoom?->room_number}" . ($r->reason ? " — {$r->reason}" : ''),
+                $r->transferred_at,
+                'transfer'
+            );
+        }
+
+        // 5) Log kebersihan kamar (room keeper) — berdasarkan kamar & tanggal menginap
+        foreach ($roomLogs as $log) {
+            $label = match ($log->status_reported) {
+                'clean' => 'Lapor kamar bersih',
+                'dirty' => 'Lapor kamar kotor',
+                'maintenance' => 'Lapor kamar rusak',
+                default => 'Update status kamar',
+            };
+
+            $push(
+                $log->user,
+                $label,
+                "Kamar {$log->room?->room_number}" . ($log->notes ? ' — ' . $log->notes : ''),
+                $log->created_at,
+                'kamar'
+            );
+        }
+
+        return $items->sortBy('time')->values();
     }
 }
