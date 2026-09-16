@@ -30,10 +30,10 @@ class DashboardController extends Controller
 
         $preset = $request->query('preset', 'month');
 
-        if ($request->filled('start_date') && $request->filled('end_date')) {
+        if ($request->date('start_date') && $request->date('end_date')) {
             $preset = 'custom';
-            $revenueStart = \Illuminate\Support\Carbon::parse($request->query('start_date'))->startOfDay();
-            $revenueEnd = \Illuminate\Support\Carbon::parse($request->query('end_date'))->endOfDay();
+            $revenueStart = $request->date('start_date')->startOfDay();
+            $revenueEnd = $request->date('end_date')->endOfDay();
         } else {
             [$revenueStart, $revenueEnd] = match ($preset) {
                 'today' => [now()->startOfDay(), now()->endOfDay()],

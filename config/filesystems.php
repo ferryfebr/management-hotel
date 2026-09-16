@@ -33,7 +33,10 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // 'serve' => true akan membuat route publik GET /storage/{path}
+            // yang melayani isi storage/app/private TANPA LOGIN — foto KTP bisa
+            // bocor. JANGAN diaktifkan (security.md §1.2).
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

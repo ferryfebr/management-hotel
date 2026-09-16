@@ -20,13 +20,13 @@
 <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div class="flex items-center gap-3">
-            <span class="w-14 h-14 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xl font-semibold flex-shrink-0">{{ strtoupper(substr($transaction->customer->name, 0, 1)) }}</span>
+            <span class="w-14 h-14 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xl font-semibold flex-shrink-0">{{ strtoupper(substr($transaction->customer?->name ?? '-', 0, 1)) }}</span>
             <div>
-                <h2 class="font-semibold text-lg">{{ $transaction->customer->name }}</h2>
+                <h2 class="font-semibold text-lg">{{ $transaction->customer?->name ?? 'Pelanggan dihapus' }}</h2>
                 <p class="text-xs text-gray-500">{{ $transaction->code }} &middot; <x-badge status="{{ $transaction->status }}" /></p>
             </div>
         </div>
-        @if($transaction->customer->id_card_photo)
+        @if($transaction->customer?->id_card_photo)
             <a href="{{ $transaction->customer->id_card_photo_url }}" target="_blank" class="text-xs text-indigo-600 hover:underline">Lihat Foto KTP</a>
         @else
             <span class="text-xs text-gray-400">Foto KTP sudah tidak tersedia</span>
@@ -36,7 +36,7 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mt-5">
         <div>
             <p class="text-xs text-gray-500">Kamar</p>
-            <p class="font-medium">{{ $transaction->room->room_number }} &middot; {{ $transaction->room->roomType->name }}</p>
+            <p class="font-medium">{{ $transaction->room?->room_number ?? '-' }} &middot; {{ $transaction->room?->roomType?->name ?? '-' }}</p>
         </div>
         <div>
             <p class="text-xs text-gray-500">Check-in</p>
@@ -52,7 +52,7 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mt-5 border-t border-gray-100 pt-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm mt-5 border-t border-gray-100 pt-4">
         <div>
             <p class="text-xs text-gray-500">Total Tagihan</p>
             <p class="font-medium">Rp {{ number_format($transaction->totalBill(), 0, ',', '.') }}</p>
@@ -64,10 +64,6 @@
         <div>
             <p class="text-xs text-gray-500">Charge</p>
             <p class="font-medium">Rp {{ number_format($transaction->totalCharge(), 0, ',', '.') }}</p>
-        </div>
-        <div>
-            <p class="text-xs text-gray-500">Late Fee</p>
-            <p class="font-medium">Rp {{ number_format($transaction->late_fee, 0, ',', '.') }}</p>
         </div>
     </div>
 </div>

@@ -17,6 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\ImageManager;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TransactionController extends Controller
 {
@@ -57,7 +58,7 @@ class TransactionController extends Controller
     {
         $data = $request->validate([
             'customer_name' => ['required', 'string', 'max:150'],
-            'customer_phone' => ['required', 'digits_between:10,12'],
+            'customer_phone' => ['required', 'digits_between:10,14'],
             'id_card_number' => ['required', 'digits:16'],
             'id_card_photo' => ['required', 'image', 'max:4096'], // wajib upload, maks 4MB
             'room_id' => ['required', 'exists:rooms,id'],
@@ -73,7 +74,7 @@ class TransactionController extends Controller
         ], [
             'customer_name.required' => 'Nama tamu wajib diisi.',
             'customer_phone.required' => 'No. telepon wajib diisi.',
-            'customer_phone.digits_between' => 'No. Telepon harus 10-12 angka.',
+            'customer_phone.digits_between' => 'No. Telepon harus 10-14 angka.',
             'id_card_number.required' => 'Nomor KTP wajib diisi.',
             'id_card_number.digits' => 'Nomor KTP harus tepat 16 digit angka.',
             'id_card_photo.required' => 'Foto KTP wajib diunggah.',
@@ -195,6 +196,10 @@ class TransactionController extends Controller
 
             return $transaction;
         });
+
+        // Retensi foto: jaga folder tetap maks 1000 file (hapus paling lama).
+        // Dijalankan setelah transaksi commit agar tidak menahan lock DB.
+        \App\Support\PhotoRetention::prune('id-cards');
 
         return redirect()
             ->route('transactions.active')
@@ -323,35 +328,10 @@ class TransactionController extends Controller
     {
         abort_unless($transaction->status === Transaction::STATUS_CHECKED_IN, 404);
 
-        // Late checkout fee: 1x harga kamar bila lewat >3 jam dari jadwal.
-        // Dicatat sekali saja (late_fee == 0 guard), tanpa mengubah status transaksi,
-        // supaya sisa tagihan bisa dilunasi dulu sebelum check-out benar-benar selesai.
-        DB::transaction(function () use ($transaction) {
-            if ($transaction->late_fee == 0 && $transaction->isLateCheckout()) {
-                $lateFee = (float) $transaction->room_price_per_night;
-
-                $transaction->update([
-                    'late_fee' => $lateFee,
-                    'final_price' => (float) $transaction->final_price + $lateFee,
-                ]);
-
-                $transaction->update([
-                    'remaining_payment' => max($transaction->totalBill() - $transaction->totalPaid(), 0),
-                ]);
-            }
-        });
-
-        $transaction->refresh();
-
         $remaining = max($transaction->totalBill() - $transaction->totalPaid(), 0);
 
         if ($remaining > 0) {
             $message = 'Transaksi belum lunas. Sisa bayar: Rp ' . number_format($remaining, 0, ',', '.') . '.';
-
-            if ($transaction->late_fee > 0) {
-                $message = 'Tamu terlambat check-out, dikenakan biaya tambahan Rp '
-                    . number_format($transaction->late_fee, 0, ',', '.') . '. ' . $message;
-            }
 
             return back()->withErrors($message . ' Lunaskan dulu sebelum check-out.');
         }
@@ -519,5 +499,81 @@ class TransactionController extends Controller
         }
 
         return $items->sortBy('time')->values();
+    }
+
+    /**
+     * Export riwayat transaksi selesai ke CSV (backup manual data teks).
+     *
+     * CSV tidak menyimpan gambar, hanya data transaksi + nominal. Ikut filter
+     * tanggal yang sama dengan halaman riwayat. Ditulis via fputcsv (PHP native)
+     * supaya tidak menambah dependency (hosting terbatas).
+     */
+    public function exportHistory(Request $request): StreamedResponse
+    {
+        $startDate = $request->date('start_date');
+        $endDate = $request->date('end_date');
+
+        $query = Transaction::with([
+                'customer:id,name,phone,id_card_number',
+                'room:id,room_number,room_type_id',
+                'room.roomType:id,name',
+                'payments:id,transaction_id,amount,type',
+            ])
+            ->where('status', Transaction::STATUS_CHECKED_OUT)
+            ->when($startDate && $endDate, fn ($q) => $q->whereBetween('check_out_date', [$startDate, $endDate]))
+            ->orderByDesc('check_out_date')
+            ->orderByDesc('id');
+
+        $filename = 'riwayat-transaksi-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+
+            // BOM UTF-8 agar Excel membaca karakter Indonesia dengan benar.
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Kode', 'Nama Tamu', 'No. Telepon', 'No. KTP',
+                'Kamar', 'Jenis Kamar', 'Check-in', 'Check-out', 'Jumlah Malam',
+                'Harga/Malam', 'Total Harga', 'Diskon', 'Final Price',
+                'Total Charge', 'Total Tagihan', 'Sudah Dibayar', 'Sisa', 'Status',
+            ], ';');
+
+            $query->chunk(200, function ($transactions) use ($out) {
+                foreach ($transactions as $trx) {
+                    // Hitung agregat dari relasi yang sudah di-eager-load
+                    // (hindari 3 query agregat per baris di dalam chunk).
+                    $payments = $trx->payments;
+                    $totalPaid = (float) $payments->whereIn('type', ['dp', 'pelunasan'])->sum('amount');
+                    $totalCharge = (float) $payments->where('type', Payment::TYPE_CHARGE)->sum('amount');
+                    $totalBill = (float) $trx->final_price + $totalCharge;
+
+                    fputcsv($out, [
+                        $trx->code,
+                        $trx->customer?->name ?? '-',
+                        $trx->customer?->phone ?? '-',
+                        $trx->customer?->id_card_number ?? '-',
+                        $trx->room?->room_number ?? '-',
+                        $trx->room?->roomType?->name ?? '-',
+                        $trx->check_in_date?->format('Y-m-d') ?? '-',
+                        $trx->check_out_date?->format('Y-m-d') ?? '-',
+                        $trx->total_days,
+                        number_format((float) $trx->room_price_per_night, 0, ',', '.'),
+                        number_format((float) $trx->total_price, 0, ',', '.'),
+                        number_format((float) $trx->discount_amount, 0, ',', '.'),
+                        number_format((float) $trx->final_price, 0, ',', '.'),
+                        number_format($totalCharge, 0, ',', '.'),
+                        number_format($totalBill, 0, ',', '.'),
+                        number_format($totalPaid, 0, ',', '.'),
+                        number_format(max($totalBill - $totalPaid, 0), 0, ',', '.'),
+                        $trx->status,
+                    ], ';');
+                }
+            });
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 }

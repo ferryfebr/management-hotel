@@ -34,12 +34,12 @@ class ReservationController extends Controller
     {
         $data = $request->validate([
             'customer_name' => ['required', 'string', 'max:150'],
-            'customer_phone' => ['required', 'digits_between:10,12'],
+            'customer_phone' => ['required', 'digits_between:10,14'],
             'room_id' => ['required', 'exists:rooms,id'],
             'check_in_date' => ['required', 'date', 'after_or_equal:today'],
             'check_out_date' => ['required', 'date', 'after_or_equal:check_in_date'],
         ], [
-            'customer_phone.digits_between' => 'No. Telepon harus 10-12 angka.',
+            'customer_phone.digits_between' => 'No. Telepon harus 10-14 angka.',
         ]);
 
         $room = Room::findOrFail($data['room_id']);

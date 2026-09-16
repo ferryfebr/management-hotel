@@ -61,14 +61,14 @@
             @forelse($payments as $payment)
                 <tr class="border-b border-gray-100 hover:bg-gray-50">
                     <td class="px-4 py-3">{{ $payment->paid_at->format('d M Y H.i') }} WIT</td>
-                    <td class="px-4 py-3">{{ $payment->transaction->code }}</td>
+                    <td class="px-4 py-3">{{ $payment->transaction?->code ?? '-' }}</td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2.5">
-                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($payment->transaction->customer->name, 0, 1)) }}</span>
-                            {{ $payment->transaction->customer->name }}
+                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($payment->transaction?->customer?->name ?? '-', 0, 1)) }}</span>
+                            {{ $payment->transaction?->customer?->name ?? 'Pelanggan dihapus' }}
                         </div>
                     </td>
-                    <td class="px-4 py-3">{{ $payment->transaction->room->room_number }}</td>
+                    <td class="px-4 py-3">{{ $payment->transaction?->room?->room_number ?? '-' }}</td>
                     <td class="px-4 py-3"><x-badge status="{{ $payment->type }}" /></td>
                     <td class="px-4 py-3 uppercase text-xs">{{ $payment->payment_method }}</td>
                     <td class="px-4 py-3 text-right">Rp {{ number_format($payment->amount, 0, ',', '.') }}</td>

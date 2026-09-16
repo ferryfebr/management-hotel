@@ -15,16 +15,16 @@
         <details class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <summary class="cursor-pointer list-none px-4 py-3 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center hover:bg-gray-50">
                 <div class="flex items-center gap-3">
-                    <span class="w-11 h-11 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">{{ strtoupper(substr($trx->customer->name, 0, 1)) }}</span>
+                    <span class="w-11 h-11 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">{{ strtoupper(substr($trx->customer?->name ?? '-', 0, 1)) }}</span>
                     <div>
-                        <p class="font-semibold">{{ $trx->customer->name }}</p>
+                        <p class="font-semibold">{{ $trx->customer?->name ?? 'Pelanggan dihapus' }}</p>
                         <p class="text-xs text-gray-500">{{ $trx->code }} &middot; <x-badge status="checked_in" /></p>
                     </div>
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6 text-sm">
                     <div>
                         <p class="text-xs text-gray-500">Kamar</p>
-                        <p>{{ $trx->room->room_number }} &middot; {{ $trx->room->roomType->name }}</p>
+                        <p>{{ $trx->room?->room_number ?? '-' }} &middot; {{ $trx->room?->roomType?->name ?? '-' }}</p>
                     </div>
                     <div>
                         <p class="text-xs text-gray-500">Check-in</p>
@@ -141,7 +141,7 @@
                 {{-- Check-out --}}
                 <form method="POST" action="{{ route('transactions.checkout', $trx) }}" x-show="activeTab === 'checkout'"
                       class="space-y-3 bg-white border border-gray-100 rounded-lg p-4"
-                      onsubmit="return confirm('Selesaikan check-out untuk {{ $trx->customer->name }}?')">
+                      onsubmit="return confirm('Selesaikan check-out untuk {{ $trx->customer?->name ?? 'tamu ini' }}?')">
                     @csrf @method('PATCH')
                     @php $charges = $trx->payments->where('type', \App\Models\Payment::TYPE_CHARGE); @endphp
                     @if($charges->isNotEmpty())
@@ -151,24 +151,10 @@
                             @endforeach
                         </ul>
                     @endif
-                    @if($trx->late_fee > 0)
-                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                            Biaya keterlambatan check-out: Rp {{ number_format($trx->late_fee, 0, ',', '.') }} (1x harga kamar).
-                        </div>
-                    @elseif($trx->isLateCheckout())
-                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                            Tamu melewati batas check-out (12:00 + 3 jam). Akan dikenakan biaya keterlambatan
-                            Rp {{ number_format($trx->potentialLateFee(), 0, ',', '.') }} (1x harga kamar) saat check-out.
-                        </div>
-                    @endif
-                    @php
-                        $pendingLateFee = $trx->late_fee > 0 ? 0 : $trx->potentialLateFee();
-                        $effectiveRemaining = max($trx->totalBill() + $pendingLateFee - $trx->totalPaid(), 0);
-                    @endphp
                     <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-                        Sisa yang harus dibayar tamu: Rp {{ number_format($effectiveRemaining, 0, ',', '.') }}
+                        Sisa yang harus dibayar tamu: Rp {{ number_format(max($trx->totalBill() - $trx->totalPaid(), 0), 0, ',', '.') }}
                     </div>
-                    @if($effectiveRemaining > 0)
+                    @if(max($trx->totalBill() - $trx->totalPaid(), 0) > 0)
                         <div>
                             <label class="block font-medium text-sm text-gray-700 mb-1">Metode Pembayaran</label>
                             <select name="payment_method" required class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">

@@ -27,11 +27,11 @@
                     <td class="px-4 py-3">{{ $r->code }}</td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2.5">
-                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($r->customer->name, 0, 1)) }}</span>
-                            {{ $r->customer->name }}
+                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($r->customer?->name ?? '-', 0, 1)) }}</span>
+                            {{ $r->customer?->name ?? 'Pelanggan dihapus' }}
                         </div>
                     </td>
-                    <td class="px-4 py-3">{{ $r->room->room_number }}</td>
+                    <td class="px-4 py-3">{{ $r->room?->room_number ?? '-' }}</td>
                     <td class="px-4 py-3">
                         {{ $r->check_in_date->format('d M Y') }}
                         @if($isLate)

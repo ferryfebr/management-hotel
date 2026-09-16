@@ -60,7 +60,7 @@
                 @forelse($customer->transactions as $trx)
                     <tr class="border-b border-gray-100 hover:bg-gray-50">
                         <td class="px-4 py-3">{{ $trx->code }}</td>
-                        <td class="px-4 py-3">{{ $trx->room->room_number }}</td>
+                        <td class="px-4 py-3">{{ $trx->room?->room_number ?? '-' }}</td>
                         <td class="px-4 py-3">{{ $trx->check_in_date->format('d M Y') }}</td>
                         <td class="px-4 py-3">{{ $trx->check_out_date->format('d M Y') }}</td>
                         <td class="px-4 py-3"><x-badge status="{{ $trx->status }}" /></td>

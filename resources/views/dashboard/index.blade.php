@@ -118,11 +118,11 @@
                     <td class="px-4 py-3">{{ $trx->code }}</td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2.5">
-                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($trx->customer->name, 0, 1)) }}</span>
-                            {{ $trx->customer->name }}
+                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($trx->customer?->name ?? '-', 0, 1)) }}</span>
+                            {{ $trx->customer?->name ?? 'Pelanggan dihapus' }}
                         </div>
                     </td>
-                    <td class="px-4 py-3">{{ $trx->room->room_number }}</td>
+                    <td class="px-4 py-3">{{ $trx->room?->room_number ?? '-' }}</td>
                     <td class="px-4 py-3"><x-badge status="{{ $trx->status }}" /></td>
                     <td class="px-4 py-3">Rp {{ number_format($trx->final_price, 0, ',', '.') }}</td>
                 </tr>

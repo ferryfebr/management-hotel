@@ -75,6 +75,9 @@ class RoomKeeperController extends Controller
             $room->update(['status' => $newRoomStatus]);
         });
 
+        // Retensi foto: jaga folder tetap maks 1000 file (hapus paling lama).
+        \App\Support\PhotoRetention::prune('room-proofs');
+
         return back()->with('success', 'Status kamar berhasil diperbarui.');
     }
 

@@ -77,6 +77,12 @@ class RoomController extends Controller
             return back()->withErrors('Kamar tidak bisa dihapus karena memiliki histori transaksi.');
         }
 
+        // room_logs (cascade) menghapus lognya, tapi room_transfers memakai
+        // restrictOnDelete — cek dulu agar tidak berujung error FK 500.
+        if ($room->transfersFrom()->exists() || $room->transfersTo()->exists()) {
+            return back()->withErrors('Kamar tidak bisa dihapus karena memiliki histori pindah kamar.');
+        }
+
         $roomNumber = $room->room_number;
         $room->delete();
 

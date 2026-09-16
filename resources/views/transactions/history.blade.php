@@ -17,6 +17,7 @@
     @if($startDate || $endDate)
         <x-button variant="secondary" href="{{ route('transactions.history') }}">Reset</x-button>
     @endif
+    <x-button variant="secondary" href="{{ route('transactions.history.export', request()->only(['start_date', 'end_date'])) }}">Export CSV</x-button>
 </form>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -39,11 +40,11 @@
                     <td class="px-4 py-3">{{ $trx->code }}</td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2.5">
-                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($trx->customer->name, 0, 1)) }}</span>
-                            {{ $trx->customer->name }}
+                            <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">{{ strtoupper(substr($trx->customer?->name ?? '-', 0, 1)) }}</span>
+                            {{ $trx->customer?->name ?? 'Pelanggan dihapus' }}
                         </div>
                     </td>
-                    <td class="px-4 py-3">{{ $trx->room->room_number }} &middot; {{ $trx->room->roomType->name }}</td>
+                    <td class="px-4 py-3">{{ $trx->room?->room_number ?? '-' }} &middot; {{ $trx->room?->roomType?->name ?? '-' }}</td>
                     <td class="px-4 py-3">{{ $trx->check_in_date->format('d M Y') }}</td>
                     <td class="px-4 py-3">{{ $trx->check_out_date->format('d M Y') }}</td>
                     <td class="px-4 py-3"><x-badge status="{{ $trx->status }}" /></td>
