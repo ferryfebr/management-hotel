@@ -268,7 +268,8 @@ class UserManagementController extends Controller
                     $label,
                     "Kamar {$log->room?->room_number}" . ($log->notes ? ' — ' . $log->notes : ''),
                     $log->created_at,
-                    'kamar'
+                    'kamar',
+                    $log->proof_photo ? route('room-logs.photo', $log) : null
                 ));
             });
 
@@ -322,7 +323,7 @@ class UserManagementController extends Controller
         })->values();
     }
 
-    private function row(?User $user, string $action, string $detail, $time, string $type): array
+    private function row(?User $user, string $action, string $detail, $time, string $type, ?string $photo = null): array
     {
         return [
             'user' => $user,
@@ -330,6 +331,7 @@ class UserManagementController extends Controller
             'detail' => $detail,
             'time' => $time,
             'type' => $type,
+            'photo' => $photo,
         ];
     }
 }
