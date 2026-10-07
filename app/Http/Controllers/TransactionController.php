@@ -9,6 +9,7 @@ use App\Models\RoomLog;
 use App\Models\RoomTransfer;
 use App\Models\StayExtension;
 use App\Models\Transaction;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -54,7 +55,7 @@ class TransactionController extends Controller
     /**
      * Proses check-in baru: validasi & upload KTP wajib, input DP, kalkulasi diskon.
      */
-    public function createCheckIn(Request $request): RedirectResponse
+    public function createCheckIn(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'customer_name' => ['required', 'string', 'max:150'],
@@ -100,6 +101,10 @@ class TransactionController extends Controller
         $room = Room::with('roomType')->findOrFail($data['room_id']);
 
         if ($room->status !== Room::STATUS_AVAILABLE) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Kamar tidak tersedia untuk check-in.'], 422);
+            }
+
             return back()->withInput()->withErrors('Kamar tidak tersedia untuk check-in.');
         }
 
@@ -121,9 +126,13 @@ class TransactionController extends Controller
                 ->exists();
 
             if ($hasOtherBooking) {
-                return back()->withInput()->withErrors(
-                    'Kamar sudah dipesan pada rentang tanggal tersebut. Pilih kamar atau tanggal lain.'
-                );
+                $conflictMessage = 'Kamar sudah dipesan pada rentang tanggal tersebut. Pilih kamar atau tanggal lain.';
+
+                if ($request->expectsJson()) {
+                    return response()->json(['message' => $conflictMessage], 422);
+                }
+
+                return back()->withInput()->withErrors($conflictMessage);
             }
         }
 
@@ -201,10 +210,18 @@ class TransactionController extends Controller
         // Dijalankan setelah transaksi commit agar tidak menahan lock DB.
         \App\Support\PhotoRetention::prune('id-cards');
 
-        return redirect()
+        $redirect = redirect()
             ->route('transactions.active')
             ->with('success', "Check-in berhasil. Kode transaksi: {$transaction->code}")
             ->with('clear_checkin_draft', true);
+
+        // Respons AJAX (submit via FormData dari kamera HP): balikkan URL tujuan,
+        // flash message tetap tersimpan untuk request GET berikutnya.
+        if ($request->expectsJson()) {
+            return response()->json(['redirect' => route('transactions.active')]);
+        }
+
+        return $redirect;
     }
 
     /**

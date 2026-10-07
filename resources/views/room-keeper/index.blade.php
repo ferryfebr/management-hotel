@@ -97,6 +97,9 @@ $accentColor = [
     // ==== Kamera / galeri foto bukti ====
     var activeInput = null;
     var activePreview = null;
+    // Hasil kamera disimpan sebagai Blob apa adanya (JANGAN `new File([blob])` —
+    // Safari iOS mengirim file kosong). Key = id input.
+    var capturedProofBlobs = {};
 
     function showPreview(input, previewId) {
         var preview = previewId ? document.getElementById(previewId) : null;
@@ -107,6 +110,29 @@ $accentColor = [
             preview.classList.remove('hidden');
         };
         reader.readAsDataURL(input.files[0]);
+    }
+
+    function renderPreviewBlob(blob, previewId) {
+        var preview = previewId ? document.getElementById(previewId) : null;
+        if (!preview || !blob) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+            preview.src = reader.result;
+            preview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(blob);
+    }
+
+    function hasPendingCapture() {
+        // Blob hasil kamera (getUserMedia) disimpan terpisah.
+        for (var k in capturedProofBlobs) { if (capturedProofBlobs[k]) return true; }
+        // Foto dari galeri / kamera native (fallback) hanya masuk ke input.files,
+        // bukan ke capturedProofBlobs — ikut dicek supaya auto-reload tidak menghapusnya.
+        var inputs = document.querySelectorAll('input[name="proof_photo"]');
+        for (var i = 0; i < inputs.length; i++) {
+            if (inputs[i].files && inputs[i].files.length) return true;
+        }
+        return false;
     }
 
     function assignToInput(file) {
@@ -120,7 +146,10 @@ $accentColor = [
     document.querySelectorAll('.proof-gallery').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var input = document.getElementById(btn.getAttribute('data-target'));
-            if (input) input.click();
+            if (input) {
+                capturedProofBlobs[input.id] = null;
+                input.click();
+            }
         });
     });
 
@@ -143,7 +172,11 @@ $accentColor = [
         tmp.style.display = 'none';
         document.body.appendChild(tmp);
         tmp.addEventListener('change', function () {
-            assignToInput(tmp.files && tmp.files[0]);
+            var f = tmp.files && tmp.files[0];
+            if (f) {
+                if (activeInput) capturedProofBlobs[activeInput.id] = null;
+                assignToInput(f);
+            }
             document.body.removeChild(tmp);
         });
         tmp.click();
@@ -187,18 +220,70 @@ $accentColor = [
     });
     document.getElementById('cameraCapture').addEventListener('click', function () {
         var video = document.getElementById('cameraVideo');
-        if (!camStream || !video || !video.videoWidth) return;
+        if (!camStream || !video || !video.videoWidth || !activeInput) return;
+        // Turunkan resolusi biar file kecil (server tetap kompres ke 800px).
+        var maxDim = 1280;
+        var scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
         var canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(function (blob) {
             if (!blob) return;
-            assignToInput(new File([blob], 'proof_photo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
+            capturedProofBlobs[activeInput.id] = blob;
+            renderPreviewBlob(blob, activePreview ? activePreview.id : null);
+            // Isi input hanya supaya syarat `required` (Alpine) terpenuhi;
+            // konten yang dikirim tetap Blob mentah lewat FormData di atas.
+            try {
+                var dt = new DataTransfer();
+                dt.items.add(new File([blob], 'proof_photo.jpg', { type: 'image/jpeg' }));
+                activeInput.files = dt.files;
+            } catch (err) {
+                activeInput.required = false;
+            }
             closeCameraModal();
-        }, 'image/jpeg', 0.9);
+        }, 'image/jpeg', 0.8);
     });
+
+    // Kirim Blob hasil kamera lewat FormData + fetch (submit native tidak dipakai
+    // untuk hasil kamera karena bermasalah di iOS/Safari).
+    document.querySelectorAll('form[enctype="multipart/form-data"]').forEach(function (form) {
+        form.querySelectorAll('button[name="status_reported"]').forEach(function (btn) {
+            btn.addEventListener('click', function () { form.dataset.statusReported = btn.value; });
+        });
+
+        form.addEventListener('submit', function (e) {
+            var input = form.querySelector('input[name="proof_photo"]');
+            var blob = input ? capturedProofBlobs[input.id] : null;
+            if (!blob) return;
+
+            e.preventDefault();
+            var status = (e.submitter && e.submitter.name === 'status_reported')
+                ? e.submitter.value
+                : form.dataset.statusReported;
+
+            var fd = new FormData(form);
+            fd.delete('proof_photo');
+            if (status) fd.set('status_reported', status);
+            fd.append('proof_photo', blob, 'proof_photo.jpg');
+
+            fetch(form.action, {
+                method: 'POST',
+                body: fd,
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            }).then(function (r) {
+                return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+            }).then(function (res) {
+                if (res.ok) {
+                    window.location.href = res.data.redirect || window.location.href;
+                } else {
+                    alert((res.data && res.data.message) || 'Periksa kembali isian form.');
+                }
+            }).catch(function () { form.submit(); });
+        });
+    });
+
+    setTimeout(function tick(){ var a=document.activeElement,typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); if(!typing&&!document.hidden&&!hasPendingCapture()) location.reload(); setTimeout(tick,15000); },15000);
 })();
-setTimeout(function tick(){ var a=document.activeElement,typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); if(!typing&&!document.hidden) location.reload(); setTimeout(tick,15000); },15000);
 </script>
 @endsection

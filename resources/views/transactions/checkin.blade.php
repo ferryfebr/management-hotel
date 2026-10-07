@@ -195,6 +195,29 @@
         reader.readAsDataURL(file);
     }
 
+    // Kecilkan foto galeri/native sebelum ditulis ke sessionStorage supaya tidak
+    // kena QuotaExceededError (foto kamera HP bisa >5MB). Server tetap kompres ulang.
+    function downscaleToDataUrl(file, cb) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+            var maxDim = 1000;
+            var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(url);
+            cb(canvas.toDataURL('image/jpeg', 0.75));
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); };
+        img.src = url;
+    }
+
+    function saveDraft(dataUrl) {
+        try { sessionStorage.setItem(KEY, dataUrl); } catch (e) {}
+    }
+
     function renderPreview(dataUrl) {
         if (!dataUrl || !preview) return;
         preview.src = dataUrl;
@@ -229,15 +252,15 @@
     input.addEventListener('change', function () {
         var file = input.files && input.files[0];
         if (!file) return;
-        fileToDataUrl(file, function (dataUrl) {
-            sessionStorage.setItem(KEY, dataUrl);
+        downscaleToDataUrl(file, function (dataUrl) {
+            saveDraft(dataUrl);
             renderPreview(dataUrl);
         });
     });
 
     if (input.files.length) {
-        fileToDataUrl(input.files[0], function (dataUrl) {
-            sessionStorage.setItem(KEY, dataUrl);
+        downscaleToDataUrl(input.files[0], function (dataUrl) {
+            saveDraft(dataUrl);
             renderPreview(dataUrl);
         });
     }
@@ -306,6 +329,9 @@
     var mainPhoto = document.getElementById('id_card_photo');
     var btnCamera = document.getElementById('btn_camera');
     var btnGallery = document.getElementById('btn_gallery');
+    // Hasil kamera disimpan sebagai Blob apa adanya. JANGAN dibungkus
+    // `new File([blob], ...)` — Safari iOS menghasilkan file kosong saat upload.
+    var capturedKtpBlob = null;
 
     function assignToMain(file) {
         if (!mainPhoto || !file) return;
@@ -336,7 +362,8 @@
         tmp.style.display = 'none';
         document.body.appendChild(tmp);
         tmp.addEventListener('change', function () {
-            assignToMain(tmp.files && tmp.files[0]);
+            var f = tmp.files && tmp.files[0];
+            if (f) { capturedKtpBlob = null; assignToMain(f); }
             document.body.removeChild(tmp);
         });
         tmp.click();
@@ -369,21 +396,55 @@
     document.getElementById('cameraCapture').addEventListener('click', function () {
         var video = document.getElementById('cameraVideo');
         if (!camStream || !video || !video.videoWidth) return;
+        // Turunkan resolusi biar file kecil (server tetap kompres ke 1000px).
+        var maxDim = 1280;
+        var scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
         var canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(function (blob) {
             if (!blob) return;
-            assignToMain(new File([blob], 'id_card_photo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
+            capturedKtpBlob = blob;
+            fileToDataUrl(blob, function (dataUrl) {
+                saveDraft(dataUrl);
+                renderPreview(dataUrl);
+            });
             closeCameraModal();
-        }, 'image/jpeg', 0.9);
+        }, 'image/jpeg', 0.8);
     });
 
     if (btnCamera) btnCamera.addEventListener('click', openCamera);
     if (btnGallery) btnGallery.addEventListener('click', function () {
+        capturedKtpBlob = null;
         if (mainPhoto) mainPhoto.click();
     });
+
+    // Kirim Blob hasil kamera lewat FormData + fetch. Submit native tidak dipakai
+    // untuk hasil kamera karena file assign programatik tidak terkirim benar di iOS.
+    if (checkinForm) {
+        checkinForm.addEventListener('submit', function (e) {
+            if (!capturedKtpBlob) return;
+            e.preventDefault();
+            var fd = new FormData(checkinForm);
+            fd.delete('id_card_photo');
+            fd.append('id_card_photo', capturedKtpBlob, 'id_card_photo.jpg');
+            fetch(checkinForm.action, {
+                method: 'POST',
+                body: fd,
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            }).then(function (r) {
+                return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+            }).then(function (res) {
+                if (res.ok) {
+                    try { sessionStorage.removeItem(KEY); } catch (e) {}
+                    window.location.href = res.data.redirect || checkinForm.action;
+                } else {
+                    alert((res.data && res.data.message) || 'Periksa kembali isian form.');
+                }
+            }).catch(function () { checkinForm.submit(); });
+        });
+    }
 })();
 </script>
 @endsection

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Room;
 use App\Models\RoomLog;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,7 @@ class RoomKeeperController extends Controller
     /**
      * Update status kebersihan (dirty -> clean/available) dan catat log.
      */
-    public function updateStatus(Request $request, Room $room): RedirectResponse
+    public function updateStatus(Request $request, Room $room): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'status_reported' => ['required', 'in:dirty,clean,maintenance'],
@@ -78,7 +79,14 @@ class RoomKeeperController extends Controller
         // Retensi foto: jaga folder tetap maks 1000 file (hapus paling lama).
         \App\Support\PhotoRetention::prune('room-proofs');
 
-        return back()->with('success', 'Status kamar berhasil diperbarui.');
+        $redirect = back()->with('success', 'Status kamar berhasil diperbarui.');
+
+        // Respons AJAX (submit via FormData dari kamera HP): balikkan URL tujuan.
+        if ($request->expectsJson()) {
+            return response()->json(['redirect' => route('room-keeper.index')]);
+        }
+
+        return $redirect;
     }
 
     /**
