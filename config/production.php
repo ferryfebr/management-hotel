@@ -8,6 +8,11 @@
  * null di luar file config setelah cache dibuat.
  */
 return [
+    'super_admin' => [
+        'name' => env('PROD_SUPER_ADMIN_NAME', 'Super Admin'),
+        'email' => env('PROD_SUPER_ADMIN_EMAIL'),
+        'password' => env('PROD_SUPER_ADMIN_PASSWORD'),
+    ],
     'owner' => [
         'name' => env('PROD_OWNER_NAME', 'Owner'),
         'email' => env('PROD_OWNER_EMAIL'),

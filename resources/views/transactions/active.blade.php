@@ -194,26 +194,6 @@
         if (form) form.addEventListener('submit', function () { el.value = el.value.replace(/\./g, ''); });
     });
 
-    // ==== Realtime polling (refresh otomatis tiap 15 dtk bila idle) ====
-    // Jangan reload kalau ada panel tamu yang sedang dibuka (details[open]),
-    // ada field yang sedang difokus, atau form sudah diisi — supaya input tidak terbuang.
-    document.querySelectorAll('details form').forEach(function (f) {
-        var dirty = function () { f.setAttribute('data-dirty', '1'); };
-        f.addEventListener('input', dirty);
-        f.addEventListener('change', dirty);
-    });
-    function isBusy() {
-        var a = document.activeElement;
-        var tag = a ? a.tagName : '';
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-        if (document.querySelector('details[open]')) return true;
-        if (document.querySelector('form[data-dirty="1"]')) return true;
-        return false;
-    }
-    setTimeout(function tick() {
-        if (!document.hidden && !isBusy()) location.reload();
-        setTimeout(tick, 15000);
-    }, 15000);
 })();
 </script>
 @endsection

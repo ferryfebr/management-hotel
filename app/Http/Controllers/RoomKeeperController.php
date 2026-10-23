@@ -19,7 +19,7 @@ class RoomKeeperController extends Controller
     public function index(): View
     {
         $rooms = Room::with(['roomType', 'roomLogs' => fn ($q) => $q->whereNotNull('proof_photo')->latest()->limit(1)])
-            ->orderByRaw("FIELD(status, 'dirty', 'maintenance', 'occupied', 'available')")
+            ->orderByRaw("CASE status WHEN 'dirty' THEN 0 WHEN 'maintenance' THEN 1 WHEN 'occupied' THEN 2 WHEN 'available' THEN 3 ELSE 4 END")
             ->orderBy('room_number')
             ->get();
 
@@ -77,7 +77,11 @@ class RoomKeeperController extends Controller
         });
 
         // Retensi foto: jaga folder tetap maks 1000 file (hapus paling lama).
-        \App\Support\PhotoRetention::prune('room-proofs');
+        \App\Support\PhotoRetention::prune(
+            'room-proofs',
+            (int) config('retention.media.room-proofs.max_files', 5000),
+            (int) config('retention.media.room-proofs.max_bytes', 300 * 1024 * 1024)
+        );
 
         $redirect = back()->with('success', 'Status kamar berhasil diperbarui.');
 

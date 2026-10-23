@@ -17,12 +17,18 @@ return new class extends Migration
             $table->text('notes')->nullable()->after('type');
         });
 
-        DB::statement("ALTER TABLE payments MODIFY COLUMN type ENUM('dp', 'pelunasan', 'refund', 'charge') NOT NULL DEFAULT 'dp'");
+        // MySQL/MariaDB perlu ALTER ENUM; SQLite sudah memakai CHECK constraint
+        // yang mencakup 'charge' sejak create_payments_table, jadi lewati.
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            DB::statement("ALTER TABLE payments MODIFY COLUMN type ENUM('dp', 'pelunasan', 'refund', 'charge') NOT NULL DEFAULT 'dp'");
+        }
     }
 
     public function down(): void
     {
-        DB::statement("ALTER TABLE payments MODIFY COLUMN type ENUM('dp', 'pelunasan', 'refund') NOT NULL DEFAULT 'dp'");
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            DB::statement("ALTER TABLE payments MODIFY COLUMN type ENUM('dp', 'pelunasan', 'refund') NOT NULL DEFAULT 'dp'");
+        }
 
         Schema::table('payments', function (Blueprint $table) {
             $table->dropColumn('notes');

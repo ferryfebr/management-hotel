@@ -131,7 +131,4 @@
     </table>
     </div>
 </div>
-<script>
-setTimeout(function tick(){ var a=document.activeElement,typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); if(!typing&&!document.hidden) location.reload(); setTimeout(tick,15000); },15000);
-</script>
 @endsection

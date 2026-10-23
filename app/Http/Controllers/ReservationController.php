@@ -68,7 +68,7 @@ class ReservationController extends Controller
             $totalPrice = $totalDays * (float) $room->roomType->price;
 
             Transaction::create([
-                'code' => 'RSV-' . strtoupper(Str::random(8)),
+                'code' => 'INV-' . strtoupper(Str::random(8)),
                 'customer_id' => $customer->id,
                 'room_id' => $room->id,
                 'user_id' => auth()->id(),

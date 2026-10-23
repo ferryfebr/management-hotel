@@ -33,7 +33,7 @@ APP_ENV=production
 
 ### 1.4 Tidak ada SSH = tidak ada patching manual di level OS
 
-Ini sisi positifnya: karena tidak ada akses shell, kamu (developer) **tidak bertanggung jawab** atas security patching OS/server — itu tanggung jawab Rumahweb sebagai bagian dari layanan shared hosting. Fokus keamanan project ini murni di **level aplikasi** (poin 1.1–1.3 di atas), bukan di level infrastruktur.
+Ini sisi positifnya: karena tidak ada akses shell, kamu (developer) **tidak bertanggung jawab** atas security patching OS/server — itu tanggung jawab Domainesia sebagai bagian dari layanan shared hosting. Fokus keamanan project ini murni di **level aplikasi** (poin 1.1–1.3 di atas), bukan di level infrastruktur.
 
 ## 2. Data Pribadi (PII) — Foto & Nomor KTP
 
@@ -76,7 +76,7 @@ Ini sisi positifnya: karena tidak ada akses shell, kamu (developer) **tidak bert
 ## 8. Backup — Tanggung Jawab Ganda (Provider + Manual)
 
 Karena tidak ada SSH untuk setup backup script otomatis sendiri:
-- **Kalau addon "Daily Backup" Rumahweb diaktifkan** (rekomendasi kalau budget cukup): itu jadi lapisan utama.
+- **Kalau addon "Daily Backup" Domainesia diaktifkan** (rekomendasi kalau budget cukup): itu jadi lapisan utama.
 - **Kalau tidak diaktifkan**: developer/owner **wajib** melakukan export database manual berkala lewat phpMyAdmin (mis. mingguan) dan simpan salinannya di luar server (Google Drive, laptop lokal). Jangan andalkan "hosting pasti aman" tanpa backup independen sama sekali.
 
 ## 9. Checklist Sebelum Deploy ke Production
@@ -87,9 +87,9 @@ Karena tidak ada SSH untuk setup backup script otomatis sendiri:
 - [ ] Route migration sementara (`DeployController`) sudah dihapus/dinonaktifkan setelah dipakai.
 - [ ] Foto KTP sudah melalui proses kompresi sebelum disimpan.
 - [ ] Folder upload foto KTP tidak bisa di-*directory-listing*.
-- [ ] HTTPS/SSL aktif (Free SSL dari Rumahweb sudah terpasang & terverifikasi).
+- [ ] HTTPS/SSL aktif (Free SSL dari Domainesia sudah terpasang & terverifikasi).
 - [ ] Middleware `role` terpasang di semua route sensitif (`php artisan route:list` — cek manual sebelum upload).
-- [ ] Backup terjadwal aktif (addon Rumahweb) **atau** proses backup manual sudah didokumentasikan dan dijalankan minimal sekali sebelum go-live.
+- [ ] Backup terjadwal aktif (addon Domainesia) **atau** proses backup manual sudah didokumentasikan dan dijalankan minimal sekali sebelum go-live.
 - [ ] `.env` tidak ikut ter-upload ke folder yang bisa diakses publik, dan tidak pernah di-commit ke repository manapun.
 
 ## 10. Kalau Menemukan Kerentanan Saat Coding

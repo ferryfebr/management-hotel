@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\Customer;
+use App\Support\RetentionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, RetentionService $retention): View
     {
         $customers = Customer::query()
             ->when($request->search, function ($q) use ($request) {
@@ -25,7 +26,18 @@ class CustomerController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return view('customers.index', compact('customers'));
+        $pendingCustomerExport = auth()->user()?->hasOwnerAccess()
+            ? $retention->pendingCustomerExportCount()
+            : 0;
+        $customerExportReminder = (int) config('retention.customer_export.reminder', 300);
+        $customerExportBatch = (int) config('retention.customer_export.batch', 300);
+
+        return view('customers.index', compact(
+            'customers',
+            'pendingCustomerExport',
+            'customerExportReminder',
+            'customerExportBatch'
+        ));
     }
 
     public function show(Customer $customer): View

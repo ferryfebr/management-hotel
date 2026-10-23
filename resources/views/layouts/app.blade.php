@@ -61,6 +61,10 @@
         $activityNav = [
             $nav('clock', 'users.activities', 'users.activities', 'Aktivitas'),
         ];
+        $adminNav = [
+            $nav('charts', 'admin.dashboard', 'admin.dashboard', 'Panel Admin'),
+            $nav('clipboard', 'admin.archives', 'admin.archives*', 'Arsip & Backup'),
+        ];
 
         $navClass = fn($active) => $active
             ? 'flex items-center gap-3 px-3 py-2 rounded-lg bg-indigo-600 text-white font-medium'
@@ -83,7 +87,7 @@
 
         <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
             @auth
-                @if(auth()->user()->isOwner())
+                @if(auth()->user()->hasOwnerAccess())
                     @foreach($ownerNav as $item)
                         <a href="{{ route($item['route']) }}" class="{{ $navClass(request()->routeIs($item['pattern'])) }}">
                             {!! $item['icon'] !!} {{ $item['label'] }}
@@ -100,6 +104,15 @@
                             {!! $item['icon'] !!} {{ $item['label'] }}
                         </a>
                     @endforeach
+
+                    @if(auth()->user()->isSuperAdmin())
+                        <div class="pt-3 mt-3 border-t border-slate-800"></div>
+                        @foreach($adminNav as $item)
+                            <a href="{{ route($item['route']) }}" class="{{ $navClass(request()->routeIs($item['pattern'])) }}">
+                                {!! $item['icon'] !!} {{ $item['label'] }}
+                            </a>
+                        @endforeach
+                    @endif
                 @endif
 
                 @if(auth()->user()->isResepsionis())
@@ -133,7 +146,7 @@
                     </span>
                     <div class="min-w-0">
                         <p class="text-sm font-medium truncate">{{ auth()->user()->name }}</p>
-                        <p class="text-xs text-slate-400 truncate">{{ ucfirst(str_replace('_', ' ', auth()->user()->role)) }}</p>
+                        <p class="text-xs text-slate-400 truncate">{{ \App\Models\User::roleLabel(auth()->user()->role) }}</p>
                     </div>
                 </div>
             @endauth
@@ -155,7 +168,7 @@
                         <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold">{{ strtoupper(substr(auth()->user()->name, 0, 1)) }}</span>
                         <div class="leading-tight">
                             <p class="font-medium">{{ auth()->user()->name }}</p>
-                            <p class="text-xs text-gray-400">{{ ucfirst(str_replace('_', ' ', auth()->user()->role)) }}</p>
+                            <p class="text-xs text-gray-400">{{ \App\Models\User::roleLabel(auth()->user()->role) }}</p>
                         </div>
                     </div>
                     <form method="POST" action="{{ route('logout') }}">
@@ -170,22 +183,6 @@
         </header>
 
         <main class="flex-1 p-4 md:p-6">
-            @if(session('success'))
-                <div class="mb-4 rounded-lg bg-green-100 text-green-800 px-4 py-2 text-sm">
-                    {{ session('success') }}
-                </div>
-            @endif
-
-            @if($errors->any())
-                <div class="mb-4 rounded-lg bg-red-100 text-red-800 px-4 py-2 text-sm">
-                    <ul class="list-disc list-inside">
-                        @foreach($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-
             @yield('content')
         </main>
     </div>
@@ -219,5 +216,7 @@
     try { sessionStorage.removeItem('checkin_id_card_photo'); } catch (e) {}
 </script>
 @endif
+
+<x-flash-toast />
 </body>
 </html>

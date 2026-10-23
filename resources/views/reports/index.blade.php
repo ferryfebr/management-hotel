@@ -42,6 +42,10 @@
     </div>
 </div>
 
+@if($archived->isNotEmpty())
+    <p class="text-xs text-gray-500 -mt-3 mb-4">Total sudah termasuk ringkasan transaksi yang telah diarsipkan.</p>
+@endif
+
 <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
     <div class="px-4 py-3 border-b border-gray-100 font-semibold text-sm">Rincian Pembayaran</div>
     <div class="overflow-x-auto">

@@ -10,12 +10,6 @@
     <div class="bg-white p-6 sm:p-8 rounded-lg shadow w-full max-w-sm">
         <h1 class="text-xl font-bold mb-6 text-center">Kharisma Hotel</h1>
 
-        @if($errors->any())
-            <div class="mb-4 rounded bg-red-100 text-red-800 px-4 py-2 text-sm">
-                {{ $errors->first() }}
-            </div>
-        @endif
-
         <form method="POST" action="{{ route('login.attempt') }}" class="space-y-4">
             @csrf
             <div>
@@ -34,5 +28,7 @@
             <x-button variant="primary" type="submit" block>Masuk</x-button>
         </form>
     </div>
+
+    <x-flash-toast />
 </body>
 </html>

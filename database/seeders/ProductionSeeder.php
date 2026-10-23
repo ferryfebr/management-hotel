@@ -25,6 +25,12 @@ class ProductionSeeder extends Seeder
     {
         $accounts = [
             [
+                'name' => config('production.super_admin.name', 'Super Admin'),
+                'email' => config('production.super_admin.email'),
+                'password' => config('production.super_admin.password'),
+                'role' => User::ROLE_SUPER_ADMIN,
+            ],
+            [
                 'name' => config('production.owner.name', 'Owner'),
                 'email' => config('production.owner.email'),
                 'password' => config('production.owner.password'),

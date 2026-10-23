@@ -439,10 +439,22 @@
                 if (res.ok) {
                     try { sessionStorage.removeItem(KEY); } catch (e) {}
                     window.location.href = res.data.redirect || checkinForm.action;
-                } else {
-                    alert((res.data && res.data.message) || 'Periksa kembali isian form.');
+                    return;
                 }
-            }).catch(function () { checkinForm.submit(); });
+
+                var message = (res.data && res.data.errors && res.data.errors.id_card_photo
+                    && res.data.errors.id_card_photo[0])
+                    || (res.data && res.data.message)
+                    || 'Periksa kembali isian form.';
+
+                if (window.showToast) {
+                    window.showToast('error', message);
+                }
+            }).catch(function () {
+                if (window.showToast) {
+                    window.showToast('error', 'Gagal memproses check-in. Periksa koneksi lalu coba lagi.');
+                }
+            });
         });
     }
 })();

@@ -94,8 +94,8 @@ class Room extends Model
     {
         return $query->whereDoesntHave('transactions', function (Builder $q) use ($checkIn, $checkOut) {
             $q->whereIn('status', ['reserved', 'checked_in'])
-                ->where('check_in_date', '<', $checkOut)
-                ->where('check_out_date', '>', $checkIn);
+                ->whereDate('check_in_date', '<', $checkOut)
+                ->whereDate('check_out_date', '>', $checkIn);
         });
     }
 

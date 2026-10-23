@@ -9,12 +9,16 @@ use App\Models\RoomLog;
 use App\Models\RoomTransfer;
 use App\Models\StayExtension;
 use App\Models\Transaction;
+use App\Support\PhotoRetention;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\ImageManager;
@@ -100,6 +104,24 @@ class TransactionController extends Controller
 
         $room = Room::with('roomType')->findOrFail($data['room_id']);
 
+        // Konversi reservasi: transaksi reservasi yang sama akan di-update,
+        // bukan dibuat transaksi baru, supaya tidak ada dua booking aktif.
+        $reservation = null;
+
+        if (! empty($data['reservation_id'])) {
+            $reservation = Transaction::whereKey($data['reservation_id'])->first();
+
+            if (! $reservation || $reservation->status !== Transaction::STATUS_RESERVED) {
+                $conflictMessage = 'Reservasi tidak valid atau sudah diproses.';
+
+                if ($request->expectsJson()) {
+                    return response()->json(['message' => $conflictMessage], 422);
+                }
+
+                return back()->withInput()->withErrors($conflictMessage);
+            }
+        }
+
         if ($room->status !== Room::STATUS_AVAILABLE) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Kamar tidak tersedia untuk check-in.'], 422);
@@ -117,7 +139,7 @@ class TransactionController extends Controller
             ->exists();
 
         if (! $conflict) {
-            $hasOtherBooking = \App\Models\Transaction::query()
+            $hasOtherBooking = Transaction::query()
                 ->where('room_id', $room->id)
                 ->whereIn('status', [Transaction::STATUS_RESERVED, Transaction::STATUS_CHECKED_IN])
                 ->where('check_in_date', '<', $data['check_out_date'])
@@ -136,24 +158,36 @@ class TransactionController extends Controller
             }
         }
 
-        $transaction = DB::transaction(function () use ($data, $room, $request) {
-            $customer = Customer::firstOrCreate(
-                ['id_card_number' => $data['id_card_number']],
-                ['name' => $data['customer_name'], 'phone' => $data['customer_phone']]
-            );
+        $transaction = DB::transaction(function () use ($data, $room, $request, $reservation) {
+            // Cari pelanggan dari KTP. Saat konversi reservasi, pelanggan lama
+            // (yang dibuat dari nomor telepon) dipakai ulang bila KTP belum ada.
+            $customer = Customer::where('id_card_number', $data['id_card_number'])->first();
+
+            if (! $customer && $reservation) {
+                $customer = $reservation->customer;
+            }
+
+            if (! $customer) {
+                $customer = Customer::create([
+                    'name' => $data['customer_name'],
+                    'phone' => $data['customer_phone'],
+                    'id_card_number' => $data['id_card_number'],
+                ]);
+            }
 
             // Simpan foto KTP di disk PRIVATE, bukan public — data PII sensitif.
             // Wajib dikompresi: resize (maks lebar 1000px) + kualitas 70% (prd §5.1, security §2).
-            $manager = new ImageManager(new Driver());
+            $manager = new ImageManager(new Driver);
             $image = $manager->read($request->file('id_card_photo'));
             $image->scaleDown(1000);
             $encoded = $image->toJpeg(70);
-            $idCardPath = 'id-cards/' . uniqid() . '.jpg';
+            $idCardPath = 'id-cards/'.uniqid().'.jpg';
             Storage::disk('private')->put($idCardPath, (string) $encoded);
 
             $customer->update([
                 'name' => $data['customer_name'],
                 'phone' => $data['customer_phone'],
+                'id_card_number' => $data['id_card_number'],
                 'id_card_photo' => $idCardPath,
             ]);
 
@@ -170,8 +204,7 @@ class TransactionController extends Controller
 
             $downPayment = (float) $data['down_payment'];
 
-            $transaction = Transaction::create([
-                'code' => 'TRX-' . strtoupper(Str::random(8)),
+            $transactionAttributes = [
                 'customer_id' => $customer->id,
                 'room_id' => $room->id,
                 'user_id' => auth()->id(),
@@ -186,7 +219,16 @@ class TransactionController extends Controller
                 'down_payment' => $downPayment,
                 'remaining_payment' => max($finalPrice - $downPayment, 0),
                 'status' => Transaction::STATUS_CHECKED_IN,
-            ]);
+            ];
+
+            if ($reservation) {
+                $transaction = $reservation;
+                $transaction->update($transactionAttributes);
+            } else {
+                $transaction = Transaction::create([
+                    'code' => 'INV-'.strtoupper(Str::random(8)),
+                ] + $transactionAttributes);
+            }
 
             if ($downPayment > 0) {
                 Payment::create([
@@ -208,7 +250,11 @@ class TransactionController extends Controller
 
         // Retensi foto: jaga folder tetap maks 1000 file (hapus paling lama).
         // Dijalankan setelah transaksi commit agar tidak menahan lock DB.
-        \App\Support\PhotoRetention::prune('id-cards');
+        PhotoRetention::prune(
+            'id-cards',
+            (int) config('retention.media.id-cards.max_files', 6000),
+            (int) config('retention.media.id-cards.max_bytes', 600 * 1024 * 1024)
+        );
 
         $redirect = redirect()
             ->route('transactions.active')
@@ -232,8 +278,21 @@ class TransactionController extends Controller
         abort_unless($transaction->status === Transaction::STATUS_CHECKED_IN, 404);
 
         $data = $request->validate([
-            'new_checkout_date' => ['required', 'date', 'after:' . $transaction->check_out_date->format('Y-m-d')],
+            'new_checkout_date' => ['required', 'date', 'after:'.$transaction->check_out_date->format('Y-m-d')],
         ]);
+
+        // Perpanjangan tidak boleh menabrak reservasi/tamu lain di kamar yang sama.
+        $hasConflict = Transaction::query()
+            ->where('room_id', $transaction->room_id)
+            ->whereKeyNot($transaction->id)
+            ->whereIn('status', [Transaction::STATUS_RESERVED, Transaction::STATUS_CHECKED_IN])
+            ->whereDate('check_in_date', '<', $data['new_checkout_date'])
+            ->whereDate('check_out_date', '>', $transaction->check_in_date->toDateString())
+            ->exists();
+
+        if ($hasConflict) {
+            return back()->withErrors('Kamar sudah dipesan pada rentang tanggal baru tersebut. Pilih tanggal lain.');
+        }
 
         DB::transaction(function () use ($data, $transaction) {
             $oldCheckout = $transaction->check_out_date;
@@ -274,14 +333,30 @@ class TransactionController extends Controller
         abort_unless($transaction->status === Transaction::STATUS_CHECKED_IN, 404);
 
         $data = $request->validate([
-            'to_room_id' => ['required', 'exists:rooms,id', 'different:' . $transaction->room_id],
+            'to_room_id' => ['required', 'exists:rooms,id', Rule::notIn([$transaction->room_id])],
             'reason' => ['required', 'string', 'max:255'],
+        ], [
+            'to_room_id.not_in' => 'Kamar tujuan harus berbeda dari kamar saat ini.',
         ]);
 
         $toRoom = Room::findOrFail($data['to_room_id']);
 
         if ($toRoom->status !== Room::STATUS_AVAILABLE) {
             return back()->withErrors('Kamar tujuan tidak tersedia.');
+        }
+
+        // Kamar tujuan juga harus bebas untuk seluruh tanggal menginap tamu,
+        // bukan sekadar status kamar saat ini.
+        $isFree = Room::query()
+            ->whereKey($toRoom->id)
+            ->availableBetween(
+                $transaction->check_in_date->toDateString(),
+                $transaction->check_out_date->toDateString()
+            )
+            ->exists();
+
+        if (! $isFree) {
+            return back()->withErrors('Kamar tujuan sudah dipesan pada tanggal menginap tamu ini.');
         }
 
         DB::transaction(function () use ($data, $transaction, $toRoom) {
@@ -302,7 +377,7 @@ class TransactionController extends Controller
             $transaction->update(['room_id' => $toRoom->id]);
         });
 
-        return back()->with('success', 'Tamu berhasil dipindahkan ke kamar ' . $toRoom->room_number . '.');
+        return back()->with('success', 'Tamu berhasil dipindahkan ke kamar '.$toRoom->room_number.'.');
     }
 
     /**
@@ -341,25 +416,47 @@ class TransactionController extends Controller
     /**
      * Selesaikan transaksi: hitung sisa pelunasan, catat pembayaran akhir, kamar jadi dirty.
      */
-    public function processCheckOut(Transaction $transaction): RedirectResponse
+    public function processCheckOut(Request $request, Transaction $transaction): RedirectResponse
     {
         abort_unless($transaction->status === Transaction::STATUS_CHECKED_IN, 404);
 
         $remaining = max($transaction->totalBill() - $transaction->totalPaid(), 0);
 
-        if ($remaining > 0) {
-            $message = 'Transaksi belum lunas. Sisa bayar: Rp ' . number_format($remaining, 0, ',', '.') . '.';
+        $data = $request->validate([
+            'payment_method' => [
+                $remaining > 0 ? 'required' : 'nullable',
+                'in:cash,transfer,qris,debit,kartu_kredit',
+            ],
+        ], [
+            'payment_method.required' => 'Metode pembayaran pelunasan wajib dipilih.',
+            'payment_method.in' => 'Metode pembayaran pelunasan tidak valid.',
+        ]);
 
-            return back()->withErrors($message . ' Lunaskan dulu sebelum check-out.');
-        }
+        DB::transaction(function () use ($transaction, $data) {
+            $locked = Transaction::query()
+                ->whereKey($transaction->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        DB::transaction(function () use ($transaction) {
-            $transaction->update([
+            $remaining = max($locked->totalBill() - $locked->totalPaid(), 0);
+
+            if ($remaining > 0) {
+                Payment::create([
+                    'transaction_id' => $locked->id,
+                    'amount' => $remaining,
+                    'payment_method' => $data['payment_method'] ?? 'cash',
+                    'type' => Payment::TYPE_PELUNASAN,
+                    'received_by' => auth()->id(),
+                    'paid_at' => now(),
+                ]);
+            }
+
+            $locked->update([
                 'remaining_payment' => 0,
                 'status' => Transaction::STATUS_CHECKED_OUT,
             ]);
 
-            $transaction->room->update(['status' => Room::STATUS_DIRTY]);
+            $locked->room->update(['status' => Room::STATUS_DIRTY]);
         });
 
         return redirect()
@@ -424,7 +521,7 @@ class TransactionController extends Controller
     /**
      * Gabungkan aktivitas transaksi + log kamar jadi satu timeline urut waktu.
      */
-    private function buildHistoryTimeline(Transaction $transaction, $roomLogs): \Illuminate\Support\Collection
+    private function buildHistoryTimeline(Transaction $transaction, $roomLogs): Collection
     {
         $items = collect();
 
@@ -442,7 +539,7 @@ class TransactionController extends Controller
         $push(
             $transaction->user,
             'Check-in tamu',
-            ($transaction->customer?->name ?? '-') . ($transaction->room?->room_number ? " — Kamar {$transaction->room->room_number}" : ''),
+            ($transaction->customer?->name ?? '-').($transaction->room?->room_number ? " — Kamar {$transaction->room->room_number}" : ''),
             $transaction->created_at,
             'transaksi'
         );
@@ -451,7 +548,7 @@ class TransactionController extends Controller
             $push(
                 $transaction->user,
                 'Check-out tamu',
-                ($transaction->customer?->name ?? '-') . ($transaction->room?->room_number ? " — Kamar {$transaction->room->room_number}" : ''),
+                ($transaction->customer?->name ?? '-').($transaction->room?->room_number ? " — Kamar {$transaction->room->room_number}" : ''),
                 $transaction->updated_at,
                 'transaksi'
             );
@@ -469,7 +566,7 @@ class TransactionController extends Controller
             $push(
                 $p->receiver,
                 $label,
-                'Rp ' . number_format((float) $p->amount, 0, ',', '.') . ($p->notes ? ' — ' . $p->notes : ''),
+                'Rp '.number_format((float) $p->amount, 0, ',', '.').($p->notes ? ' — '.$p->notes : ''),
                 $p->paid_at,
                 'pembayaran'
             );
@@ -480,7 +577,7 @@ class TransactionController extends Controller
             $push(
                 $e->extendedBy,
                 'Perpanjang masa inap',
-                "+{$e->additional_days} malam (" . \Illuminate\Support\Carbon::parse($e->old_checkout_date)->format('d M Y') . ' → ' . \Illuminate\Support\Carbon::parse($e->new_checkout_date)->format('d M Y') . ')',
+                "+{$e->additional_days} malam (".Carbon::parse($e->old_checkout_date)->format('d M Y').' → '.Carbon::parse($e->new_checkout_date)->format('d M Y').')',
                 $e->created_at,
                 'perpanjangan'
             );
@@ -491,7 +588,7 @@ class TransactionController extends Controller
             $push(
                 $r->transferredBy,
                 'Pindah kamar',
-                "{$r->fromRoom?->room_number} → {$r->toRoom?->room_number}" . ($r->reason ? " — {$r->reason}" : ''),
+                "{$r->fromRoom?->room_number} → {$r->toRoom?->room_number}".($r->reason ? " — {$r->reason}" : ''),
                 $r->transferred_at,
                 'transfer'
             );
@@ -509,7 +606,7 @@ class TransactionController extends Controller
             $push(
                 $log->user,
                 $label,
-                "Kamar {$log->room?->room_number}" . ($log->notes ? ' — ' . $log->notes : ''),
+                "Kamar {$log->room?->room_number}".($log->notes ? ' — '.$log->notes : ''),
                 $log->created_at,
                 'kamar'
             );
@@ -531,17 +628,17 @@ class TransactionController extends Controller
         $endDate = $request->date('end_date');
 
         $query = Transaction::with([
-                'customer:id,name,phone,id_card_number',
-                'room:id,room_number,room_type_id',
-                'room.roomType:id,name',
-                'payments:id,transaction_id,amount,type',
-            ])
+            'customer:id,name,phone,id_card_number',
+            'room:id,room_number,room_type_id',
+            'room.roomType:id,name',
+            'payments:id,transaction_id,amount,type',
+        ])
             ->where('status', Transaction::STATUS_CHECKED_OUT)
             ->when($startDate && $endDate, fn ($q) => $q->whereBetween('check_out_date', [$startDate, $endDate]))
             ->orderByDesc('check_out_date')
             ->orderByDesc('id');
 
-        $filename = 'riwayat-transaksi-' . now()->format('Ymd-His') . '.csv';
+        $filename = 'riwayat-transaksi-'.now()->format('Ymd-His').'.csv';
 
         return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');

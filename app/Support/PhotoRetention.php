@@ -34,25 +34,38 @@ class PhotoRetention
      * Optimasi: cek jumlah file dulu (murah); daftar + hapus hanya
      * dijalankan saat benar-benar melewati batas.
      */
-    public static function prune(string $folder, int $max = 1000): void
+    public static function prune(string $folder, ?int $max = null, ?int $maxBytes = null): void
     {
+        $max ??= 1000;
         $disk = Storage::disk('private');
 
         // Hanya hitung file foto (abaikan .htaccess/index.html penjaga folder).
         $files = self::photoFiles($disk, $folder);
 
-        if (count($files) <= $max) {
+        $entries = array_map(fn ($path) => [
+            'path' => $path,
+            'time' => $disk->lastModified($path),
+            'size' => $disk->size($path),
+        ], $files);
+
+        usort($entries, fn ($a, $b) => $a['time'] <=> $b['time']);
+
+        $remainingCount = count($entries);
+        $remainingBytes = array_sum(array_column($entries, 'size'));
+
+        if ($remainingCount <= $max && ($maxBytes === null || $remainingBytes <= $maxBytes)) {
             return;
         }
 
-        $timestamps = array_map(fn ($path) => $disk->lastModified($path), $files);
-        array_multisort($timestamps, SORT_ASC, $files);
+        foreach ($entries as $entry) {
+            if ($remainingCount <= $max && ($maxBytes === null || $remainingBytes <= $maxBytes)) {
+                break;
+            }
 
-        $overflow = count($files) - $max;
-
-        foreach (array_slice($files, 0, $overflow) as $path) {
-            $disk->delete($path);
-            self::nullReference($folder, $path);
+            $disk->delete($entry['path']);
+            self::nullReference($folder, $entry['path']);
+            $remainingCount--;
+            $remainingBytes -= $entry['size'];
         }
     }
 

@@ -22,7 +22,7 @@ return new class extends Migration
             $table->decimal('amount', 12, 2);
             $table->enum('payment_method', ['cash', 'transfer', 'qris', 'debit', 'kartu_kredit'])
                 ->default('cash');
-            $table->enum('type', ['dp', 'pelunasan', 'refund'])->default('dp');
+            $table->enum('type', ['dp', 'pelunasan', 'refund', 'charge'])->default('dp');
 
             $table->foreignId('received_by')
                 ->constrained('users')

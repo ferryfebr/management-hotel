@@ -15,12 +15,12 @@
 - [x] Copy `.env.example` ke `.env`, isi `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` sesuai setup lokal.
 - [x] `php artisan key:generate`.
 - [x] `php artisan migrate` — pastikan semua 9 tabel berhasil dibuat tanpa error foreign key.
-- [x] `php artisan db:seed` — pastikan 3 akun contoh (owner, resepsionis, room_keeper) dan data kamar dummy berhasil masuk.
+- [x] `php artisan db:seed` — pastikan 4 akun contoh (super_admin, owner, resepsionis, room_keeper) dan data kamar dummy berhasil masuk.
 - [x] Daftarkan middleware `role` di `bootstrap/app.php` (Laravel 11+) — lihat `app/Http/Middleware/README_REGISTER_MIDDLEWARE.md`.
 - [x] Setup disk `private` di `config/filesystems.php` untuk foto KTP — lihat `config/README_FILESYSTEM_PRIVATE_DISK.md`.
 - [x] `php artisan serve` atau akses lewat domain virtual Laragon, pastikan halaman login muncul.
 
-**Verifikasi Fase 0 selesai:** bisa login dengan ketiga akun contoh, masing-masing diarahkan ke halaman default sesuai role-nya.
+**Verifikasi Fase 0 selesai:** bisa login dengan keempat akun contoh, masing-masing diarahkan ke halaman default sesuai role-nya.
 
 ---
 
@@ -48,13 +48,13 @@ Jalankan tiap alur ini secara manual di browser, sebagai owner/resepsionis/room_
 
 ## Fase 2 — Hardening Sebelum Production (WAJIB, Jangan Skip)
 
-Ini bagian yang paling sering dilewatkan tapi **kritikal** karena target hosting tidak punya SSH dan storage cuma 1GB. Lihat `prd.md` §5 dan `security.md` untuk konteks lengkap tiap poin.
+Ini bagian yang paling sering dilewatkan tapi **kritikal** karena target hosting tidak punya SSH dan storage cuma 2GB. Lihat `prd.md` §5 dan `security.md` untuk konteks lengkap tiap poin.
 
 - [x] **Kompresi foto KTP**: `intervention/image:^3.11` terpasang. `TransactionController@createCheckIn` sudah resize (`scaleDown(1000)`) + kompresi (`toJpeg(70)`) lalu simpan ke disk `private`. Terverifikasi di kode & uji encode GD jalan. Test upload asli masih menunggu verifikasi browser Fase 1.
 - [x] **Cek ulang semua middleware role** di `routes/web.php` — terverifikasi: owner-only (`/dashboard`, `/reports`, `/room-types`, destroy customers/rooms) terpisah; owner+resepsionis untuk kamar/pelanggan/reservasi/transaksi/aktivitas; room_keeper khusus `/room-keeper`; foto bukti kerja (`/room-logs/{id}/photo`) untuk ketiga role. Route `DeployController` **dinonaktifkan** (di-comment) sehingga tidak ada route tanpa `auth`/`role`.
 - [x] **Ganti password seeder default** — buat `database/seeders/ProductionSeeder.php` yang ambil kredensial dari `.env` (`PROD_*`), idempotent, JANGAN pakai `DatabaseSeeder` di production (masih password contoh "password").
 - [x] **Siapkan `DeployController`** untuk migration tanpa SSH (lihat `structure.md` §4.2 Cara B) — `POST /deploy/{token}`, token dari config `app.deploy_token` (env `DEPLOY_TOKEN`), `hash_equals` anti timing-attack, opsi `?seed=1` untuk `ProductionSeeder`. **Route-nya DINONAKTIFKAN secara default** di `routes/web.php` (di-comment) untuk mencegah lubang keamanan `security.md` §1.1. Aktifkan sementara hanya saat butuh migrate, lalu NONAKTIFKAN lagi.
-- [~] **Set `.env` production**: `APP_DEBUG=false`, `APP_ENV=production`, isi kredensial DB production — **belum selesai**, menunggu Fase 3 (beli hosting & buat DB). Template placeholder `DEPLOY_TOKEN` & `PROD_*` sudah ada di `.env.example`. Template log sudah dibatasi: `LOG_STACK=daily` + `LOG_LEVEL=warning` (cegah `laravel.log` menumpuk habiskan storage 1GB).
+- [~] **Set `.env` production**: `APP_DEBUG=false`, `APP_ENV=production`, isi kredensial DB production — **belum selesai**, menunggu Fase 3 (beli hosting & buat DB). Template placeholder `DEPLOY_TOKEN` & `PROD_*` sudah ada di `.env.example`. Template log sudah dibatasi: `LOG_STACK=daily` + `LOG_LEVEL=warning` (cegah `laravel.log` menumpuk habiskan storage 2GB).
 - [x] **Cek folder upload foto KTP** — foto KTP & foto bukti kerja disimpan di disk `private` (`storage/app/private`, di luar `public/`), jadi tidak bisa kena *directory-listing* publik. Ditambah lapisan pertahanan: `.htaccess` (`Options -Indexes` + `Require all denied`) & `index.html` di `storage/app/private`, `id-cards/`, dan `room-proofs/`. Tetap verifikasi document root mengarah ke `public/` saat deploy (Fase 4).
 
 **Verifikasi Fase 2 selesai:** checklist keamanan di `security.md` §9 semuanya bisa dicentang.
@@ -63,7 +63,7 @@ Ini bagian yang paling sering dilewatkan tapi **kritikal** karena target hosting
 
 ## Fase 3 — Persiapan Hosting & Domain
 
-- [ ] Client mendaftarkan akun Rumahweb **menggunakan data client sendiri** (email, HP, metode pembayaran) — lihat `prd.md` §7 soal kepemilikan akun.
+- [ ] Client mendaftarkan akun Domainesia **menggunakan data client sendiri** (email, HP, metode pembayaran) — lihat `prd.md` §7 soal kepemilikan akun.
 - [ ] Beli paket **Entry Hosting** (1 tahun) + domain **`.my.id`** sesuai nama yang disepakati.
 - [ ] Setelah aktif, developer minta akses cPanel dari client (bukan bikinkan akun baru — tetap satu akun milik client).
 - [ ] Cek versi PHP di cPanel, set ke PHP 8.2 atau lebih baru kalau belum default.
@@ -83,7 +83,7 @@ Ikuti detail lengkap di `structure.md` §4.2. Ringkasan urutan:
 - [ ] Set document root domain ke `~/app/public/` lewat menu Domains di cPanel.
 - [ ] Jalankan migration: import SQL manual lewat phpMyAdmin, **atau** akses route `DeployController` sekali, lalu **langsung hapus/nonaktifkan route tersebut dan re-upload tanpa route itu**.
 - [ ] Jalankan seeder minimal untuk akun owner asli client (bukan seeder dummy development).
-- [ ] Cek SSL aktif (biasanya otomatis dari Rumahweb, verifikasi `https://` jalan tanpa warning).
+- [ ] Cek SSL aktif (biasanya otomatis dari Domainesia, verifikasi `https://` jalan tanpa warning).
 
 **Verifikasi Fase 4 selesai — tes ini WAJIB sebelum bilang "sudah live":**
 
@@ -112,10 +112,26 @@ Ikuti detail lengkap di `structure.md` §4.2. Ringkasan urutan:
 
 Bukan checklist sekali centang, tapi pengingat berkala:
 
-- [ ] Pantau penggunaan storage hosting tiap beberapa bulan (via cPanel) — pastikan tidak mendekati limit 1GB.
+- [ ] Pantau penggunaan storage hosting tiap beberapa bulan (via cPanel) — pastikan tidak mendekati limit 2GB.
 - [ ] Cek notifikasi monitoring uptime — kalau ada downtime, investigasi penyebabnya (biasanya bukan salah kode kalau hosting shared, tapi tetap perlu dicek).
 - [ ] Reminder renewal domain & hosting ke client menjelang tanggal jatuh tempo (meski auto-renewal aktif, tetap baik untuk konfirmasi kartu/saldo client masih valid).
 - [ ] Backlog fitur dari `structure.md` §6 (form edit RoomType/Room, observer visit_count, dll) — kerjakan sesuai prioritas dan permintaan user, bukan sekaligus di awal.
+
+---
+
+## Fase 7 - Panel Super Admin, Retensi & Arsip
+
+- [x] Tambah role `super_admin` + akses owner + panel admin khusus.
+- [x] Panel pemakaian kuota 2048MB: kode, database, foto KTP, foto bukti, arsip, backup, log.
+- [x] Retensi otomatis per kategori dengan budget database 400MB dan hard guard 75%.
+- [x] Arsip transaksi/room log/activity log/customer ke ZIP di storage privat.
+- [x] Ringkasan omset bulanan agar laporan lama tetap terbaca setelah arsip.
+- [x] Export customer CSV + foto KTP per batch 300 dengan pengingat.
+- [x] Backup database manual (ZIP tabel CSV) dari panel admin.
+- [x] Command `retention:run` + fallback otomatis setelah commit data.
+- [x] Test SQLite dan MySQL lulus.
+
+Catatan operasional: pasang cron Domainesia harian `php artisan retention:run` bila tersedia. Jika tidak, retensi tetap berjalan otomatis saat ada aktivitas tulis.
 
 ---
 

@@ -11,7 +11,7 @@ Setelah diskusi teknis & pertimbangan biaya, keputusan yang **sudah final** dan 
 | Backend | Laravel (PHP), Blade (bukan React/Inertia) |
 | Database | MySQL |
 | Local dev environment | Laragon |
-| Hosting production | Shared Hosting **Rumahweb Entry** (Rp25.000/bln, **tanpa SSH**) |
+| Hosting production | Shared Hosting **Domainesia SSD NVMe 2GB** (tanpa SSH) |
 | Domain | `.my.id` (dipilih karena renewal stabil & murah, bukan `.xyz`/`.com`) |
 | Kepemilikan akun hosting & billing | **Client** (bukan developer) — lihat §7 |
 | Budget hosting+domain client | Maksimal Rp400.000/tahun |
@@ -33,6 +33,7 @@ Aplikasi manajemen operasional penginapan kecil/guest house berbasis web, mengga
 
 | Role | Deskripsi | Akses Utama |
 |---|---|---|
+| `super_admin` | Developer/pemantau sistem | Semua akses owner + Panel Admin (kuota, retensi, arsip, backup) |
 | `owner` | Pemilik/manajer, **pemilik akun hosting** | Semua modul + Dashboard + Laporan + kelola Jenis Kamar |
 | `resepsionis` | Petugas front desk | Kamar, Reservasi, Check-in/out, Pelanggan, Tamu Aktif |
 | `room_keeper` | Petugas kebersihan | Hanya modul Status Kamar (mobile-friendly) |
@@ -69,7 +70,7 @@ Owner melihat total pendapatan, jumlah check-out, dan total malam terjual dalam 
 - FR-1: Sistem mencegah kamar dipesan dobel pada tanggal yang overlap.
 - FR-2: Setiap transaksi punya kode unik.
 - FR-3: Harga per malam di-*snapshot* saat transaksi dibuat.
-- FR-4: Foto KTP wajib pada saat check-in, **dan wajib dikompresi otomatis** sebelum disimpan (lihat §5.1 — kritikal karena storage cuma 1GB).
+- FR-4: Foto KTP wajib pada saat check-in, **dan wajib dikompresi otomatis** sebelum disimpan (lihat §5.1 — kritikal karena storage cuma 2GB).
 - FR-5: Semua histori (transfer kamar, extend, pembayaran, log kebersihan) tersimpan permanen untuk audit.
 - FR-6: Data pelanggan dan transaksi tidak dihapus permanen (soft delete).
 - FR-7: Setiap operasi lintas tabel harus atomik (`DB::transaction()`).
@@ -78,7 +79,7 @@ Owner melihat total pendapatan, jumlah check-out, dan total malam terjual dalam 
 ## 5. Non-Functional Requirements
 
 ### 5.1 Storage — KRITIKAL
-Hosting production hanya punya **1GB storage total** (kode + database + semua foto KTP). Ini requirement wajib, bukan opsional:
+Hosting production hanya punya **2GB storage total** (kode + database + semua foto KTP + arsip). Ini requirement wajib, bukan opsional:
 - Foto KTP **wajib** di-resize (maks lebar 1000px) dan dikompresi (kualitas ~70%) sebelum disimpan — target ukuran akhir 100-300KB per foto, bukan 3-5MB asli dari kamera HP.
 - Tanpa ini, storage akan habis dalam hitungan bulan, bukan tahun.
 
@@ -105,7 +106,7 @@ Data KTP adalah PII sensitif — lihat `security.md` untuk requirement wajib.
 Ini bukan requirement teknis, tapi penting untuk konteks kerja agent:
 
 - **Akun hosting, domain, dan billing tahunan adalah milik client** — bukan developer. Developer hanya mendapat akses cPanel untuk keperluan deploy & maintenance.
-- Agent **tidak perlu** membuatkan fitur "billing/subscription" apa pun di dalam aplikasi ini — pembayaran hosting terjadi di luar aplikasi (langsung client ke Rumahweb), bukan bagian dari sistem yang dibangun.
+- Agent **tidak perlu** membuatkan fitur "billing/subscription" apa pun di dalam aplikasi ini — pembayaran hosting terjadi di luar aplikasi (langsung client ke Domainesia), bukan bagian dari sistem yang dibangun.
 - Auto-renewal di akun hosting client sebaiknya diaktifkan client sendiri — di luar tanggung jawab kode aplikasi.
 
 ## 8. Metrik Keberhasilan (opsional, isi sesuai kebutuhan bisnis)
@@ -113,7 +114,7 @@ Ini bukan requirement teknis, tapi penting untuk konteks kerja agent:
 - Waktu proses check-in per tamu berkurang dibanding pencatatan manual.
 - Owner bisa mendapat laporan pendapatan bulanan tanpa rekap manual.
 - Tidak ada lagi kasus kamar dobel booking.
-- Storage hosting tidak pernah mendekati limit 1GB dalam pemakaian normal 1 tahun.
+- Storage hosting tidak pernah mendekati limit 2GB dalam pemakaian normal; database aktif dijaga di bawah hard guard 75% oleh retensi otomatis.
 
 ---
 **Catatan untuk agent:** Jika ada permintaan fitur baru dari user yang tidak tercakup di sini (mis. multi-cabang, payment gateway, queue/background job), tandai sebagai perubahan scope dan konfirmasi dulu sebelum implementasi besar — terutama kalau fitur itu butuh SSH/queue yang tidak didukung hosting saat ini.

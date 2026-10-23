@@ -37,11 +37,10 @@ $accentColor = [
             @endif
 
             <form method="POST" action="{{ route('room-keeper.update-status', $room) }}" class="space-y-2"
-                  enctype="multipart/form-data" x-data="{ status: null }">
+                  enctype="multipart/form-data">
                 @csrf @method('PATCH')
                 <div>
-                    <input type="file" name="proof_photo" accept="image/*" id="proof_photo_{{ $room->id }}" class="hidden"
-                           :required="status === 'clean' || status === 'maintenance'">
+                    <input type="file" name="proof_photo" accept="image/*" id="proof_photo_{{ $room->id }}" class="hidden">
                     <div class="flex gap-2 flex-wrap">
                         <x-button variant="primary" type="button" class="proof-camera"
                                   data-target="proof_photo_{{ $room->id }}" data-preview="proof_preview_{{ $room->id }}">Ambil Foto</x-button>
@@ -50,12 +49,13 @@ $accentColor = [
                     </div>
                     <img id="proof_preview_{{ $room->id }}" class="mt-2 h-24 object-cover rounded border hidden" alt="Pratinjau foto bukti">
                     <p class="mt-1 text-xs text-gray-500">Wajib untuk status Bersih &amp; Rusak, opsional untuk Kotor.</p>
+                    <p class="mt-1 text-xs text-red-600 hidden" data-proof-error></p>
                     @error('proof_photo')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div class="grid grid-cols-3 gap-2">
-                    <x-button variant="success" type="submit" name="status_reported" value="clean" @click="status = 'clean'">✓ Bersih</x-button>
-                    <x-button variant="warning" type="submit" name="status_reported" value="dirty" @click="status = 'dirty'">Kotor</x-button>
-                    <x-button variant="danger" type="submit" name="status_reported" value="maintenance" @click="status = 'maintenance'">Rusak</x-button>
+                    <x-button variant="success" type="submit" name="status_reported" value="clean">✓ Bersih</x-button>
+                    <x-button variant="warning" type="submit" name="status_reported" value="dirty">Kotor</x-button>
+                    <x-button variant="danger" type="submit" name="status_reported" value="maintenance">Rusak</x-button>
                 </div>
                 <textarea name="notes" rows="2" placeholder="Catatan kerusakan (opsional)"
                           class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs"></textarea>
@@ -121,18 +121,6 @@ $accentColor = [
             preview.classList.remove('hidden');
         };
         reader.readAsDataURL(blob);
-    }
-
-    function hasPendingCapture() {
-        // Blob hasil kamera (getUserMedia) disimpan terpisah.
-        for (var k in capturedProofBlobs) { if (capturedProofBlobs[k]) return true; }
-        // Foto dari galeri / kamera native (fallback) hanya masuk ke input.files,
-        // bukan ke capturedProofBlobs — ikut dicek supaya auto-reload tidak menghapusnya.
-        var inputs = document.querySelectorAll('input[name="proof_photo"]');
-        for (var i = 0; i < inputs.length; i++) {
-            if (inputs[i].files && inputs[i].files.length) return true;
-        }
-        return false;
     }
 
     function assignToInput(file) {
@@ -245,6 +233,28 @@ $accentColor = [
         }, 'image/jpeg', 0.8);
     });
 
+    function validationMessage(data, field) {
+        if (data && data.errors && data.errors[field] && data.errors[field].length) {
+            return data.errors[field][0];
+        }
+        return (data && data.message) || 'Periksa kembali isian form.';
+    }
+
+    function showProofError(form, message) {
+        var el = form.querySelector('[data-proof-error]');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.remove('hidden');
+        el.scrollIntoView({ block: 'nearest' });
+    }
+
+    function clearProofError(form) {
+        var el = form.querySelector('[data-proof-error]');
+        if (!el) return;
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
+
     // Kirim Blob hasil kamera lewat FormData + fetch (submit native tidak dipakai
     // untuk hasil kamera karena bermasalah di iOS/Safari).
     document.querySelectorAll('form[enctype="multipart/form-data"]').forEach(function (form) {
@@ -255,12 +265,27 @@ $accentColor = [
         form.addEventListener('submit', function (e) {
             var input = form.querySelector('input[name="proof_photo"]');
             var blob = input ? capturedProofBlobs[input.id] : null;
-            if (!blob) return;
-
-            e.preventDefault();
             var status = (e.submitter && e.submitter.name === 'status_reported')
                 ? e.submitter.value
                 : form.dataset.statusReported;
+            var hasFile = !!(blob || (input && input.files && input.files.length));
+
+            // Validasi foto bukti dijalankan manual supaya input file yang
+            // disembunyikan tidak memblokir submit tanpa pesan yang jelas.
+            if ((status === 'clean' || status === 'maintenance') && !hasFile) {
+                e.preventDefault();
+                var message = 'Foto bukti wajib diupload untuk status '
+                    + (status === 'clean' ? 'Bersih' : 'Rusak') + '.';
+                showProofError(form, message);
+                if (window.showToast) window.showToast('error', message);
+                return;
+            }
+
+            clearProofError(form);
+
+            if (!blob) return;
+
+            e.preventDefault();
 
             var fd = new FormData(form);
             fd.delete('proof_photo');
@@ -276,14 +301,19 @@ $accentColor = [
             }).then(function (res) {
                 if (res.ok) {
                     window.location.href = res.data.redirect || window.location.href;
-                } else {
-                    alert((res.data && res.data.message) || 'Periksa kembali isian form.');
+                    return;
                 }
-            }).catch(function () { form.submit(); });
+
+                var message = validationMessage(res.data, 'proof_photo');
+                showProofError(form, message);
+                if (window.showToast) window.showToast('error', message);
+            }).catch(function () {
+                if (window.showToast) {
+                    window.showToast('error', 'Gagal memproses perubahan status. Periksa koneksi lalu coba lagi.');
+                }
+            });
         });
     });
-
-    setTimeout(function tick(){ var a=document.activeElement,typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); if(!typing&&!document.hidden&&!hasPendingCapture()) location.reload(); setTimeout(tick,15000); },15000);
 })();
 </script>
 @endsection

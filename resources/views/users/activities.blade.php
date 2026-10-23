@@ -24,7 +24,7 @@
 @endphp
 
 <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-    <p class="text-sm text-gray-500">Riwayat aktivitas seluruh pengguna, termasuk Owner (realtime via refresh otomatis)</p>
+    <p class="text-sm text-gray-500">Riwayat aktivitas seluruh pengguna, termasuk Owner.</p>
     <form method="GET" class="flex items-center gap-2 text-sm">
         <label class="text-gray-600 whitespace-nowrap">Pengguna</label>
         <select name="user" onchange="this.form.submit()" class="border border-gray-300 rounded-md px-3 py-2 w-full sm:w-auto">
@@ -101,13 +101,4 @@
 @endforelse
 
 <div class="mt-4">{{ $activities->links() }}</div>
-
-<script>
-setTimeout(function tick(){
-    var a = document.activeElement;
-    var typing = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-    if (!typing && !document.hidden) location.reload();
-    setTimeout(tick, 15000);
-}, 15000);
-</script>
 @endsection

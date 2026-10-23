@@ -302,7 +302,7 @@ class UserManagementController extends Controller
      */
     private function applyRoleVisibility(Collection $items): Collection
     {
-        if (auth()->user()?->isOwner()) {
+        if (auth()->user()?->hasOwnerAccess()) {
             return $items;
         }
 

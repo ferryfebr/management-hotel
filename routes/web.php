@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CustomerArchiveController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
@@ -39,8 +41,8 @@ Route::get('/', fn () => redirect()->route('login'));
 // ==== Semua role yang sudah login ====
 Route::middleware('auth')->group(function () {
 
-    // ---- Owner only ----
-    Route::middleware('role:owner')->group(function () {
+    // ---- Owner + Super Admin ----
+    Route::middleware('role:owner,super_admin')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
 
         Route::get('/room-types', [RoomTypeController::class, 'index'])->name('room-types.index');
@@ -62,10 +64,12 @@ Route::middleware('auth')->group(function () {
 
         Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->name('customers.destroy');
         Route::delete('/rooms/{room}', [RoomController::class, 'destroy'])->name('rooms.destroy');
+
+        Route::post('/customers/export', [CustomerArchiveController::class, 'store'])->name('customers.export');
     });
 
-    // ---- Owner & Resepsionis ----
-    Route::middleware('role:owner,resepsionis')->group(function () {
+    // ---- Owner + Resepsionis + Super Admin ----
+    Route::middleware('role:owner,resepsionis,super_admin')->group(function () {
         Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
         Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');
@@ -107,7 +111,16 @@ Route::middleware('auth')->group(function () {
     });
 
     // ---- Foto bukti kerja: owner, resepsionis, room keeper ----
-    Route::middleware('role:owner,resepsionis,room_keeper')->group(function () {
+    Route::middleware('role:owner,resepsionis,room_keeper,super_admin')->group(function () {
         Route::get('/room-logs/{roomLog}/photo', [RoomKeeperController::class, 'proofPhoto'])->name('room-logs.photo');
+    });
+
+    // ---- Super Admin only ----
+    Route::middleware('role:super_admin')->group(function () {
+        Route::get('/admin', [AdminController::class, 'index'])->name('admin.dashboard');
+        Route::post('/admin/retention/run', [AdminController::class, 'runRetention'])->name('admin.retention.run');
+        Route::get('/admin/archives', [AdminController::class, 'archives'])->name('admin.archives');
+        Route::get('/admin/archives/{archive}/download', [AdminController::class, 'download'])->name('admin.archives.download');
+        Route::post('/admin/backup', [AdminController::class, 'backup'])->name('admin.backup');
     });
 });

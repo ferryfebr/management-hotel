@@ -2,6 +2,21 @@
 @section('title', 'Pelanggan')
 
 @section('content')
+@if(auth()->user()->hasOwnerAccess() && $pendingCustomerExport >= $customerExportReminder)
+    <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <p class="font-semibold">{{ number_format($pendingCustomerExport, 0, ',', '.') }} customer baru belum diarsipkan.</p>
+                <p class="text-xs mt-0.5">Export maksimal {{ $customerExportBatch }} customer per batch. ZIP berisi CSV dan foto KTP. Simpan file di luar hosting.</p>
+            </div>
+            <form method="POST" action="{{ route('customers.export') }}">
+                @csrf
+                <x-button variant="warning" type="submit">Export CSV + Foto KTP</x-button>
+            </form>
+        </div>
+    </div>
+@endif
+
 <form method="GET" class="mb-4">
     <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari nama, telepon, atau no. KTP..."
            class="border border-gray-300 rounded-md px-3 py-2 text-sm w-full max-w-md">

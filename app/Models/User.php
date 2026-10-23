@@ -52,6 +52,7 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     public const ROLE_OWNER = 'owner';
+    public const ROLE_SUPER_ADMIN = 'super_admin';
     public const ROLE_RESEPSIONIS = 'resepsionis';
     public const ROLE_ROOM_KEEPER = 'room_keeper';
 
@@ -106,6 +107,16 @@ class User extends Authenticatable
         return $this->role === self::ROLE_OWNER;
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === self::ROLE_SUPER_ADMIN;
+    }
+
+    public function hasOwnerAccess(): bool
+    {
+        return $this->isOwner() || $this->isSuperAdmin();
+    }
+
     public function isResepsionis(): bool
     {
         return $this->role === self::ROLE_RESEPSIONIS;
@@ -123,6 +134,7 @@ class User extends Authenticatable
     {
         return match ($this->role) {
             self::ROLE_OWNER => 'dashboard.index',
+            self::ROLE_SUPER_ADMIN => 'admin.dashboard',
             self::ROLE_RESEPSIONIS => 'transactions.active',
             self::ROLE_ROOM_KEEPER => 'room-keeper.index',
             default => 'dashboard.index',
@@ -138,6 +150,7 @@ class User extends Authenticatable
     {
         return match ($role) {
             self::ROLE_OWNER => 'Owner',
+            self::ROLE_SUPER_ADMIN => 'Super Admin',
             self::ROLE_RESEPSIONIS => 'Resepsionis',
             self::ROLE_ROOM_KEEPER => 'Room Keeper',
             default => ucfirst(str_replace('_', ' ', $role)),

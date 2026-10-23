@@ -26,6 +26,13 @@ class DatabaseSeeder extends Seeder
         // Akun awal per role — DEVELOPMENT ONLY. Password di sini ('password') tidak aman.
         // Untuk production pakai ProductionSeeder yang ambil kredensial dari .env (PROD_*).
         User::create([
+            'name' => 'Super Admin',
+            'email' => 'superadmin@hotel.test',
+            'password' => Hash::make('password'),
+            'role' => User::ROLE_SUPER_ADMIN,
+        ]);
+
+        User::create([
             'name' => 'Owner',
             'email' => 'owner@hotel.test',
             'password' => Hash::make('password'),

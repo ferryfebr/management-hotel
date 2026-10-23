@@ -4,7 +4,7 @@
 
 ## Tentang Project
 
-Aplikasi **manajemen hotel/guest house** — Laravel (PHP) + MySQL + Blade/Tailwind, dikembangkan di Laragon, deploy ke shared hosting Rumahweb Entry **tanpa SSH**. Skala target: <5 user (owner, resepsionis, room keeper), budget hosting client Rp300-400rb/tahun.
+Aplikasi **manajemen hotel/guest house** — Laravel (PHP) + MySQL + Blade/Tailwind, dikembangkan di Laragon, deploy ke shared hosting Domainesia SSD NVMe 2GB **tanpa SSH**. Skala target: <5 user (super admin, owner, resepsionis, room keeper), budget hosting client Rp300-400rb/tahun.
 
 **Stack ini sudah final** — jangan sarankan pindah ke React/Postgres/VPS kecuali user sendiri yang membuka topik itu lagi.
 
@@ -23,7 +23,7 @@ Aplikasi **manajemen hotel/guest house** — Laravel (PHP) + MySQL + Blade/Tailw
 Detail lengkap ada di `docs/security.md` dan `docs/structure.md`, tapi ini yang paling sering terlewat kalau tidak diingatkan:
 
 1. **Tidak ada SSH di hosting production.** Semua `composer install`/`artisan migrate` dikerjakan di lokal, bukan di server. Lihat `docs/structure.md` §4 untuk alur deploy yang benar.
-2. **Storage hosting cuma 1GB.** Foto KTP wajib dikompresi (resize + reduce quality) sebelum disimpan — jangan simpan file asli dari upload.
+2. **Storage hosting cuma 2GB (Domainesia SSD NVMe).** Foto KTP wajib dikompresi (resize + reduce quality) sebelum disimpan — jangan simpan file asli dari upload. Retensi otomatis wajib menjaga database di bawah hard guard 75% budget.
 3. **Tidak boleh ada fitur berbasis queue/background job** (`artisan queue:work`) — tidak didukung hosting ini.
 4. Kalau ada route sementara untuk migration tanpa SSH (`DeployController`), **wajib dihapus setelah dipakai** — jangan biarkan aktif di production.
 5. Document root production harus mengarah ke folder `public/`, bukan root project — kalau salah, `.env` bisa ke-expose publik.

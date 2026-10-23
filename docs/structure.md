@@ -75,13 +75,13 @@ routes/web.php
 
 Relasi penting: `Transaction belongsTo Customer, Room, User` dan `hasMany Payment, RoomTransfer, StayExtension`. `Transaction::totalPaid()` = SUM dari `payments`, bukan kolom `down_payment` saja. `Room::availableBetween()` wajib dipakai sebelum membuat reservasi/check-in baru.
 
-## 4. Deployment — Shared Hosting TANPA SSH (Rumahweb Entry)
+## 4. Deployment — Shared Hosting TANPA SSH (Domainesia SSD NVMe 2GB)
 
 **Ini bagian paling berbeda dari project Laravel pada umumnya — baca sebelum menyiapkan deployment apa pun.**
 
 ### 4.1 Kenapa tidak bisa deploy dengan cara biasa
 
-Paket hosting (Rumahweb Entry) **tidak menyediakan akses SSH**. Artinya `composer install`, `php artisan migrate`, `git pull`, dan semua command Artisan **tidak bisa dijalankan langsung di server**. Semua proses yang butuh command line harus dikerjakan **di komputer lokal**, lalu hasil jadinya di-upload.
+Paket hosting (Domainesia SSD NVMe 2GB) **tidak menyediakan akses SSH**. Artinya `composer install`, `php artisan migrate`, `git pull`, dan semua command Artisan **tidak bisa dijalankan langsung di server**. Semua proses yang butuh command line harus dikerjakan **di komputer lokal**, lalu hasil jadinya di-upload.
 
 ### 4.2 Alur deploy yang benar
 
@@ -110,11 +110,11 @@ Saat ini **belum dibutuhkan** karena tidak ada fitur terjadwal di scope MVP.
 
 Setiap ada perubahan kode: ulangi proses build lokal → upload file yang berubah saja (jangan upload ulang `vendor/` kalau dependency tidak berubah, untuk hemat waktu). **Tidak ada CI/CD otomatis** di setup ini — semua manual, ini trade-off yang sudah disepakati demi menekan biaya hosting.
 
-## 5. Batasan Resource Hosting (Rumahweb Entry)
+## 5. Batasan Resource Hosting (Domainesia SSD NVMe 2GB)
 
 | Resource | Batas | Implikasi untuk kode |
 |---|---|---|
-| Storage | 1GB total | Foto KTP **wajib** dikompresi (lihat `prd.md` §5.1) |
+| Storage | 2GB total | Foto KTP **wajib** dikompresi; retensi otomatis menjaga database <75% budget (lihat `prd.md` §5.1) |
 | SSH | Tidak ada | Semua deploy manual (lihat §4) |
 | Queue/background job | Tidak didukung | Jangan pakai `artisan queue:work` |
 | Node.js/Redis | Tidak ada | Tidak relevan untuk stack Blade kita |
