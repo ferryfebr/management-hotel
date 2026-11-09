@@ -114,4 +114,20 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Login Throttle
+    |--------------------------------------------------------------------------
+    |
+    | Batas percobaan login per menit per kombinasi email + IP. Produksi
+    | memakai 5/menit; saat development/testing dilonggarkan supaya login
+    | berulang tidak memblokir pengujian. Bisa dioverride lewat .env.
+    |
+    */
+
+    'login_throttle_per_minute' => (int) env(
+        'LOGIN_THROTTLE_PER_MINUTE',
+        env('APP_ENV', 'production') === 'production' ? 5 : 60
+    ),
+
 ];

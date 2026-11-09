@@ -157,7 +157,7 @@ class CheckInTest extends TestCase
         $this->assertSame(1, Transaction::first()->total_days);
     }
 
-    public function test_existing_customer_by_id_card_is_reused_and_visit_count_incremented(): void
+    public function test_existing_customer_by_id_card_is_reused_and_visit_count_recalculated(): void
     {
         $room = $this->makeRoom();
         $existing = Customer::create([
@@ -176,8 +176,106 @@ class CheckInTest extends TestCase
         $existing->refresh();
         $this->assertSame('Nama Baru', $existing->name);
         $this->assertSame('081211111111', $existing->phone);
-        $this->assertSame(3, $existing->visit_count);
+        $this->assertSame(1, $existing->visit_count);
         $this->assertSame($existing->id, Transaction::first()->customer_id);
+    }
+
+    public function test_existing_customer_with_saved_ktp_does_not_need_upload_again(): void
+    {
+        $room = $this->makeRoom();
+        Storage::disk('private')->put('id-cards/existing.jpg', 'existing-ktp');
+
+        $customer = Customer::create([
+            'name' => 'Lama',
+            'phone' => '081200000000',
+            'id_card_number' => '1234567890123456',
+            'id_card_photo' => 'id-cards/existing.jpg',
+        ]);
+        $customer->forceFill(['visit_count' => 5])->save();
+
+        $payload = $this->payload($room);
+        unset($payload['id_card_photo']);
+
+        $this->actingAs($this->frontOffice)
+            ->post(route('transactions.checkin'), $payload)
+            ->assertRedirect(route('transactions.active'))
+            ->assertSessionHasNoErrors();
+
+        $customer->refresh();
+        $this->assertSame('id-cards/existing.jpg', $customer->id_card_photo);
+        $this->assertSame(1, $customer->visit_count);
+        Storage::disk('private')->assertExists('id-cards/existing.jpg');
+        $this->assertSame(1, Transaction::count());
+    }
+
+    public function test_soft_deleted_customer_with_same_nik_is_restored_instead_of_duplicating(): void
+    {
+        $room = $this->makeRoom();
+        $trashed = Customer::create([
+            'name' => 'Lama',
+            'phone' => '081200000000',
+            'id_card_number' => '1234567890123456',
+        ]);
+        $trashed->delete();
+
+        $this->assertSoftDeleted('customers', ['id' => $trashed->id]);
+
+        $this->actingAs($this->frontOffice)
+            ->post(route('transactions.checkin'), $this->payload($room, [
+                'customer_name' => 'Nama Baru',
+                'customer_phone' => '081211111111',
+            ]))
+            ->assertRedirect(route('transactions.active'))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, Customer::withTrashed()->where('id_card_number', '1234567890123456')->count());
+        $this->assertDatabaseHas('customers', ['id' => $trashed->id, 'deleted_at' => null]);
+        $this->assertSame(1, Transaction::count());
+
+        $trashed->refresh();
+        $this->assertSame('Nama Baru', $trashed->name);
+        $this->assertSame('081211111111', $trashed->phone);
+    }
+
+    public function test_existing_customer_without_saved_ktp_still_needs_upload(): void
+    {
+        $room = $this->makeRoom();
+        Customer::create([
+            'name' => 'Lama',
+            'phone' => '081200000000',
+            'id_card_number' => '1234567890123456',
+        ]);
+
+        $payload = $this->payload($room);
+        unset($payload['id_card_photo']);
+
+        $this->actingAs($this->frontOffice)
+            ->post(route('transactions.checkin'), $payload)
+            ->assertSessionHasErrors('id_card_photo');
+
+        $this->assertSame(0, Transaction::count());
+    }
+
+    public function test_replacing_ktp_photo_deletes_old_file_after_commit(): void
+    {
+        $room = $this->makeRoom();
+        Storage::disk('private')->put('id-cards/old.jpg', 'old-ktp');
+
+        $customer = Customer::create([
+            'name' => 'Lama',
+            'phone' => '081200000000',
+            'id_card_number' => '1234567890123456',
+            'id_card_photo' => 'id-cards/old.jpg',
+        ]);
+
+        $this->actingAs($this->frontOffice)
+            ->post(route('transactions.checkin'), $this->payload($room))
+            ->assertRedirect(route('transactions.active'));
+
+        $customer->refresh();
+        $this->assertNotSame('id-cards/old.jpg', $customer->id_card_photo);
+        Storage::disk('private')->assertMissing('id-cards/old.jpg');
+        Storage::disk('private')->assertExists($customer->id_card_photo);
     }
 
     public function test_validation_rejects_incomplete_and_malformed_input(): void

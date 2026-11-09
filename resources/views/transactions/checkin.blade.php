@@ -147,6 +147,12 @@
     var searchUrl = '{{ route("customers.search") }}';
     var custTimer = null;
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+        });
+    }
+
     function hideCust() { if (custResults) { custResults.classList.add('hidden'); custResults.innerHTML = ''; } }
 
     if (nameInput && custResults) {
@@ -156,8 +162,8 @@
             items.forEach(function (c) {
                 var li = document.createElement('li');
                 li.className = 'px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-b-0';
-                li.innerHTML = '<div class="font-medium">' + c.name + ' <span class="text-gray-400">(' + c.visit_count + 'x)</span></div>' +
-                    '<div class="text-gray-500">' + (c.phone || '-') + '</div>';
+                li.innerHTML = '<div class="font-medium">' + escapeHtml(c.name) + ' <span class="text-gray-400">(' + escapeHtml(c.visit_count) + 'x)</span></div>' +
+                    '<div class="text-gray-500">' + escapeHtml(c.phone || '-') + '</div>';
                 li.addEventListener('click', function () {
                     nameInput.value = c.name;
                     if (phoneInput) phoneInput.value = c.phone || '';
@@ -284,7 +290,6 @@
     }
 
     // ==== Notif pelanggan lama via NIK KTP (real-time saat ketik) ====
-    var nikInput = document.getElementById('id_card_number');
     var hint = document.getElementById('id_card_hint');
     var hintUrl = '{{ route("customers.check-id-card") }}';
     var csrfToken = '{{ csrf_token() }}';
@@ -309,8 +314,11 @@
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.found) {
+                        var photoNote = d.has_photo
+                            ? ' · Foto KTP tersimpan, tidak perlu upload ulang.'
+                            : ' · Foto KTP belum ada, wajib upload.';
                         hint.textContent = 'Pelanggan terdahulu/terdaftar: ' + d.name +
-                            (d.visit_count ? ' (' + d.visit_count + 'x kunjungan)' : '');
+                            (d.visit_count ? ' (' + d.visit_count + 'x kunjungan)' : '') + photoNote;
                         hint.className = 'mt-1 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded';
                     } else {
                         hint.classList.add('hidden');
@@ -326,7 +334,6 @@
     }
 
     // ==== Kamera / galeri foto KTP ====
-    var mainPhoto = document.getElementById('id_card_photo');
     var btnCamera = document.getElementById('btn_camera');
     var btnGallery = document.getElementById('btn_gallery');
     // Hasil kamera disimpan sebagai Blob apa adanya. JANGAN dibungkus
@@ -334,12 +341,12 @@
     var capturedKtpBlob = null;
 
     function assignToMain(file) {
-        if (!mainPhoto || !file) return;
+        if (!input || !file) return;
         var dt = new DataTransfer();
         dt.items.add(file);
-        mainPhoto.files = dt.files;
+        input.files = dt.files;
         if (file.type && file.type.indexOf('image') !== -1) {
-            mainPhoto.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
 
@@ -417,15 +424,23 @@
     if (btnCamera) btnCamera.addEventListener('click', openCamera);
     if (btnGallery) btnGallery.addEventListener('click', function () {
         capturedKtpBlob = null;
-        if (mainPhoto) mainPhoto.click();
+        if (input) input.click();
     });
 
     // Kirim Blob hasil kamera lewat FormData + fetch. Submit native tidak dipakai
     // untuk hasil kamera karena file assign programatik tidak terkirim benar di iOS.
     if (checkinForm) {
         checkinForm.addEventListener('submit', function (e) {
+            if (checkinForm.dataset.submitting === '1') {
+                e.preventDefault();
+                return;
+            }
+
             if (!capturedKtpBlob) return;
+
             e.preventDefault();
+            if (window.lockFormSubmission) window.lockFormSubmission(checkinForm);
+
             var fd = new FormData(checkinForm);
             fd.delete('id_card_photo');
             fd.append('id_card_photo', capturedKtpBlob, 'id_card_photo.jpg');
@@ -442,6 +457,8 @@
                     return;
                 }
 
+                if (window.unlockFormSubmission) window.unlockFormSubmission(checkinForm);
+
                 var message = (res.data && res.data.errors && res.data.errors.id_card_photo
                     && res.data.errors.id_card_photo[0])
                     || (res.data && res.data.message)
@@ -451,6 +468,7 @@
                     window.showToast('error', message);
                 }
             }).catch(function () {
+                if (window.unlockFormSubmission) window.unlockFormSubmission(checkinForm);
                 if (window.showToast) {
                     window.showToast('error', 'Gagal memproses check-in. Periksa koneksi lalu coba lagi.');
                 }

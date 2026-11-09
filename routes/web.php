@@ -18,10 +18,9 @@ use Illuminate\Support\Facades\Route;
 // ==== Guest ====
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
-    // Rate limit anti brute-force: maks 5 percobaan login/menit per IP.
-    Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:5,1')
-        ->name('login.attempt');
+    // Rate limit anti brute-force ditangani di AuthController (per email+IP),
+    // jumlahnya bisa diatur lewat LOGIN_THROTTLE_PER_MINUTE.
+    Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])
@@ -65,7 +64,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->name('customers.destroy');
         Route::delete('/rooms/{room}', [RoomController::class, 'destroy'])->name('rooms.destroy');
 
-        Route::post('/customers/export', [CustomerArchiveController::class, 'store'])->name('customers.export');
+        Route::post('/customers/export', [CustomerArchiveController::class, 'store'])
+            ->middleware('throttle:5,1')
+            ->name('customers.export');
     });
 
     // ---- Owner + Resepsionis + Super Admin ----
@@ -76,8 +77,12 @@ Route::middleware('auth')->group(function () {
         Route::patch('/rooms/{room}/status', [RoomController::class, 'updateStatus'])->name('rooms.update-status');
 
         Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
-        Route::post('/customers/check-by-id-card', [CustomerController::class, 'checkByCard'])->name('customers.check-id-card');
-        Route::get('/customers/search', [CustomerController::class, 'searchByName'])->name('customers.search');
+        Route::post('/customers/check-by-id-card', [CustomerController::class, 'checkByCard'])
+            ->middleware('throttle:20,1')
+            ->name('customers.check-id-card');
+        Route::get('/customers/search', [CustomerController::class, 'searchByName'])
+            ->middleware('throttle:60,1')
+            ->name('customers.search');
         Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
         Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
         Route::get('/customers/{customer}/id-card', [CustomerController::class, 'idCardPhoto'])->name('customers.id-card');
@@ -118,9 +123,13 @@ Route::middleware('auth')->group(function () {
     // ---- Super Admin only ----
     Route::middleware('role:super_admin')->group(function () {
         Route::get('/admin', [AdminController::class, 'index'])->name('admin.dashboard');
-        Route::post('/admin/retention/run', [AdminController::class, 'runRetention'])->name('admin.retention.run');
+        Route::post('/admin/retention/run', [AdminController::class, 'runRetention'])
+            ->middleware('throttle:5,1')
+            ->name('admin.retention.run');
         Route::get('/admin/archives', [AdminController::class, 'archives'])->name('admin.archives');
         Route::get('/admin/archives/{archive}/download', [AdminController::class, 'download'])->name('admin.archives.download');
-        Route::post('/admin/backup', [AdminController::class, 'backup'])->name('admin.backup');
+        Route::post('/admin/backup', [AdminController::class, 'backup'])
+            ->middleware('throttle:5,1')
+            ->name('admin.backup');
     });
 });

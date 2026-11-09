@@ -7,7 +7,10 @@ use App\Models\ArchiveIndex;
 use App\Models\Customer;
 use App\Models\MonthlyRevenue;
 use App\Models\Payment;
+use App\Models\Room;
 use App\Models\RoomLog;
+use App\Models\RoomTransfer;
+use App\Models\StayExtension;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\RetentionService;
@@ -110,6 +113,87 @@ class AdminPanelTest extends TestCase
         $revenue = MonthlyRevenue::where('month', now()->format('Y-m'))->firstOrFail();
         $this->assertSame(200000.0, (float) $revenue->revenue);
         $this->assertSame(2, $revenue->room_nights);
+    }
+
+    public function test_transaction_archive_contains_related_payment_extension_and_transfer(): void
+    {
+        config([
+            'retention.limits.transactions' => 0,
+            'retention.batch.transactions' => 1,
+            'retention.limits.customers' => 100,
+            'retention.limits.room_logs' => 100,
+            'retention.limits.activity_logs' => 100,
+        ]);
+
+        $room = $this->makeRoom(null, 'A1', Room::STATUS_DIRTY);
+        $toRoom = $this->makeRoom(null, 'A2');
+        $transaction = $this->makeTransaction([
+            'room' => $room,
+            'status' => Transaction::STATUS_CHECKED_OUT,
+            'check_in_date' => now()->subDays(2)->toDateString(),
+            'check_out_date' => now()->toDateString(),
+            'total_days' => 2,
+            'final_price' => 200000,
+        ]);
+        $this->makePayment($transaction, 200000, Payment::TYPE_PELUNASAN);
+        StayExtension::create([
+            'transaction_id' => $transaction->id,
+            'old_checkout_date' => now()->subDay()->toDateString(),
+            'new_checkout_date' => now()->toDateString(),
+            'additional_days' => 1,
+            'additional_price' => 100000,
+            'extended_by' => $transaction->user_id,
+        ]);
+        RoomTransfer::create([
+            'transaction_id' => $transaction->id,
+            'from_room_id' => $room->id,
+            'to_room_id' => $toRoom->id,
+            'reason' => 'AC rusak',
+            'transferred_by' => $transaction->user_id,
+            'transferred_at' => now(),
+        ]);
+
+        app(RetentionService::class)->enforce();
+
+        $archive = ArchiveIndex::where('category', ArchiveIndex::CATEGORY_TRANSACTIONS)->firstOrFail();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open(Storage::disk('private')->path($archive->file_path)) === true);
+
+        $this->assertStringContainsString($transaction->code, (string) $zip->getFromName('payments.csv'));
+        $this->assertStringContainsString($transaction->code, (string) $zip->getFromName('stay_extensions.csv'));
+        $this->assertStringContainsString('AC rusak', (string) $zip->getFromName('room_transfers.csv'));
+        $zip->close();
+    }
+
+    public function test_room_log_archive_without_existing_photo_file_does_not_fail(): void
+    {
+        config([
+            'retention.limits.transactions' => 100,
+            'retention.limits.customers' => 100,
+            'retention.limits.room_logs' => 0,
+            'retention.batch.room_logs' => 1,
+            'retention.limits.activity_logs' => 100,
+        ]);
+
+        $room = $this->makeRoom();
+        $keeper = $this->makeUser(User::ROLE_ROOM_KEEPER);
+        $log = RoomLog::create([
+            'room_id' => $room->id,
+            'user_id' => $keeper->id,
+            'status_reported' => 'clean',
+            'proof_photo' => 'room-proofs/missing.jpg',
+        ]);
+
+        $summary = app(RetentionService::class)->enforce();
+
+        $this->assertSame(1, $summary['room_logs']);
+        $this->assertDatabaseMissing('room_logs', ['id' => $log->id]);
+
+        $archive = ArchiveIndex::where('category', ArchiveIndex::CATEGORY_ROOM_LOGS)->firstOrFail();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open(Storage::disk('private')->path($archive->file_path)) === true);
+        $this->assertNotFalse($zip->getFromName('room_logs.csv'));
+        $zip->close();
     }
 
     public function test_retention_can_be_run_from_super_admin_panel(): void
@@ -359,6 +443,147 @@ class AdminPanelTest extends TestCase
             ->post(route('admin.retention.run'))
             ->assertRedirect()
             ->assertSessionHas('success');
+    }
+
+    public function test_retention_does_not_archive_active_or_future_transactions(): void
+    {
+        config([
+            'retention.limits.transactions' => 1,
+            'retention.batch.transactions' => 1,
+            'retention.limits.customers' => 100,
+            'retention.limits.room_logs' => 100,
+            'retention.limits.activity_logs' => 100,
+        ]);
+
+        $active = $this->makeTransaction(['status' => Transaction::STATUS_CHECKED_IN]);
+        $reserved = $this->makeTransaction(['status' => Transaction::STATUS_RESERVED]);
+
+        $summary = app(RetentionService::class)->enforce();
+
+        $this->assertSame(0, $summary['transactions']);
+        $this->assertDatabaseHas('transactions', ['id' => $active->id]);
+        $this->assertDatabaseHas('transactions', ['id' => $reserved->id]);
+        $this->assertSame(0, ArchiveIndex::where('category', ArchiveIndex::CATEGORY_TRANSACTIONS)->count());
+    }
+
+    public function test_retention_does_not_archive_customer_with_active_transaction(): void
+    {
+        config([
+            'retention.limits.transactions' => 100,
+            'retention.limits.customers' => 1,
+            'retention.batch.customers' => 1,
+            'retention.limits.room_logs' => 100,
+            'retention.limits.activity_logs' => 100,
+        ]);
+
+        $first = $this->makeTransaction(['status' => Transaction::STATUS_CHECKED_IN]);
+        $second = $this->makeTransaction(['status' => Transaction::STATUS_CHECKED_IN]);
+
+        $summary = app(RetentionService::class)->enforce();
+
+        $this->assertSame(0, $summary['customers']);
+        $this->assertDatabaseHas('customers', ['id' => $first->customer_id]);
+        $this->assertDatabaseHas('customers', ['id' => $second->customer_id]);
+    }
+
+    public function test_old_archive_file_is_rotated_when_archive_budget_exceeded(): void
+    {
+        config([
+            'retention.archive.budget_mb' => 1,
+            'retention.limits.transactions' => 100,
+            'retention.limits.customers' => 100,
+            'retention.limits.room_logs' => 100,
+            'retention.limits.activity_logs' => 100,
+        ]);
+
+        Storage::disk('private')->put('archives/old.zip', str_repeat('x', 2 * 1024 * 1024));
+        Storage::disk('private')->put('archives/new.zip', str_repeat('y', 100 * 1024));
+
+        $old = ArchiveIndex::create([
+            'category' => ArchiveIndex::CATEGORY_TRANSACTIONS,
+            'file_name' => 'old.zip',
+            'file_path' => 'archives/old.zip',
+            'size_bytes' => 2 * 1024 * 1024,
+            'record_count' => 10,
+            'status' => ArchiveIndex::STATUS_READY,
+        ]);
+        $old->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+
+        $new = ArchiveIndex::create([
+            'category' => ArchiveIndex::CATEGORY_CUSTOMER_EXPORT,
+            'file_name' => 'new.zip',
+            'file_path' => 'archives/new.zip',
+            'size_bytes' => 100 * 1024,
+            'record_count' => 5,
+            'status' => ArchiveIndex::STATUS_READY,
+        ]);
+
+        app(RetentionService::class)->enforce();
+
+        $this->assertSame(ArchiveIndex::STATUS_DELETED, $old->fresh()->status);
+        $this->assertSame(ArchiveIndex::STATUS_READY, $new->fresh()->status);
+        Storage::disk('private')->assertMissing('archives/old.zip');
+        Storage::disk('private')->assertExists('archives/new.zip');
+    }
+
+    public function test_customer_export_without_new_customers_returns_error(): void
+    {
+        $owner = $this->makeUser(User::ROLE_OWNER);
+
+        $this->actingAs($owner)
+            ->from(route('customers.index'))
+            ->post(route('customers.export'))
+            ->assertRedirect(route('customers.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertSame(0, ArchiveIndex::where('category', ArchiveIndex::CATEGORY_CUSTOMER_EXPORT)->count());
+    }
+
+    public function test_customer_export_reports_storage_problem_clearly(): void
+    {
+        config(['retention.archive.disk' => 'missing-archive-disk']);
+        $owner = $this->makeUser(User::ROLE_OWNER);
+
+        $this->actingAs($owner)
+            ->from(route('customers.index'))
+            ->post(route('customers.export'))
+            ->assertRedirect(route('customers.index'))
+            ->assertSessionHasErrors();
+
+        $errors = session('errors');
+        $this->assertStringContainsString('Export customer gagal', $errors->first());
+        $this->assertStringContainsString('tidak bisa ditulis', $errors->first());
+    }
+
+    public function test_download_returns_404_when_archive_file_is_missing(): void
+    {
+        $superAdmin = $this->makeUser(User::ROLE_SUPER_ADMIN);
+
+        $archive = ArchiveIndex::create([
+            'category' => ArchiveIndex::CATEGORY_BACKUP,
+            'file_name' => 'missing.zip',
+            'file_path' => 'backups/missing.zip',
+            'size_bytes' => 10,
+            'record_count' => 1,
+            'status' => ArchiveIndex::STATUS_READY,
+        ]);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.archives.download', $archive))
+            ->assertNotFound();
+    }
+
+    public function test_retention_lock_prevents_concurrent_run(): void
+    {
+        $lock = Cache::lock('retention:lock', 60);
+        $this->assertTrue($lock->get());
+
+        try {
+            $summary = app(RetentionService::class)->enforce();
+            $this->assertTrue($summary['skipped'] ?? false);
+        } finally {
+            $lock->release();
+        }
     }
 
     public function test_retention_command_runs_successfully(): void

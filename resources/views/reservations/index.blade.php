@@ -22,7 +22,7 @@
         </thead>
         <tbody>
             @forelse($reservations as $r)
-    @php $isLate = $r->check_in_date->isPast(); @endphp
+                @php $isLate = $r->check_in_date->lt(today()); @endphp
                 <tr class="border-b border-gray-100 hover:bg-gray-50">
                     <td class="px-4 py-3">{{ $r->code }}</td>
                     <td class="px-4 py-3">

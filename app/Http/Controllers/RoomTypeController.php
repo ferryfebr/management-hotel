@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\RoomType;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class RoomTypeController extends Controller
@@ -19,13 +21,27 @@ class RoomTypeController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $request->merge(['name' => trim((string) $request->input('name'))]);
+
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:100', Rule::unique('room_types', 'name')],
             'price' => ['required', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
+        ], [
+            'name.unique' => 'Jenis kamar dengan nama ini sudah ada.',
         ]);
 
-        $roomType = RoomType::create($data);
+        try {
+            $roomType = RoomType::create($data);
+        } catch (UniqueConstraintViolationException) {
+            // Double submit: request kedua kalah balapan. Anggap sukses kalau
+            // nama yang sama sudah tersimpan, supaya tidak muncul notif gagal.
+            if (RoomType::where('name', $data['name'])->exists()) {
+                return back()->with('success', "Jenis kamar {$data['name']} sudah terdaftar.");
+            }
+
+            return back()->withInput()->withErrors(['name' => 'Jenis kamar dengan nama ini sudah ada.']);
+        }
 
         ActivityLog::record('Tambah jenis kamar', ActivityLog::CATEGORY_JENIS_KAMAR, $roomType->name);
 
@@ -34,13 +50,21 @@ class RoomTypeController extends Controller
 
     public function update(Request $request, RoomType $roomType): RedirectResponse
     {
+        $request->merge(['name' => trim((string) $request->input('name'))]);
+
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:100', Rule::unique('room_types', 'name')->ignore($roomType->id)],
             'price' => ['required', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
+        ], [
+            'name.unique' => 'Jenis kamar dengan nama ini sudah ada.',
         ]);
 
-        $roomType->update($data);
+        try {
+            $roomType->update($data);
+        } catch (UniqueConstraintViolationException) {
+            return back()->withInput()->withErrors(['name' => 'Jenis kamar dengan nama ini sudah ada.']);
+        }
 
         ActivityLog::record('Ubah jenis kamar', ActivityLog::CATEGORY_JENIS_KAMAR, $roomType->name);
 

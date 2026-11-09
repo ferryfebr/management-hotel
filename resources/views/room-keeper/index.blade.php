@@ -233,11 +233,44 @@ $accentColor = [
         }, 'image/jpeg', 0.8);
     });
 
-    function validationMessage(data, field) {
+    function fieldError(data, field) {
         if (data && data.errors && data.errors[field] && data.errors[field].length) {
             return data.errors[field][0];
         }
-        return (data && data.message) || 'Periksa kembali isian form.';
+        return null;
+    }
+
+    function responseMessage(status, text) {
+        if (status === 419) {
+            return 'Sesi login kedaluwarsa. Muat ulang halaman lalu coba lagi.';
+        }
+        if (status === 403) {
+            return 'Permintaan ditolak server (403). Jika memakai Cloudflare, cek WAF/Bot Fight Mode.';
+        }
+        if (status === 413) {
+            return 'Foto terlalu besar untuk server. Pilih foto lain atau perkecil ukurannya.';
+        }
+        if (status === 503) {
+            return 'Server sedang membatasi penyimpanan data. Hubungi superadmin.';
+        }
+        if (status >= 500) {
+            return 'Server error (' + status + '). Cek log aplikasi.';
+        }
+        return 'Permintaan gagal (HTTP ' + status + '). Periksa kembali isian form.';
+    }
+
+    function parseResponse(r) {
+        return r.text().then(function (text) {
+            var data = null;
+
+            try {
+                data = text ? JSON.parse(text) : null;
+            } catch (e) {
+                data = null;
+            }
+
+            return { ok: r.ok, status: r.status, data: data, text: text };
+        });
     }
 
     function showProofError(form, message) {
@@ -286,31 +319,51 @@ $accentColor = [
             if (!blob) return;
 
             e.preventDefault();
+            if (window.lockFormSubmission) window.lockFormSubmission(form);
 
             var fd = new FormData(form);
             fd.delete('proof_photo');
             if (status) fd.set('status_reported', status);
             fd.append('proof_photo', blob, 'proof_photo.jpg');
 
+            var tokenInput = form.querySelector('input[name="_token"]');
+            var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            var csrfToken = (tokenInput && tokenInput.value)
+                || (csrfMeta && csrfMeta.getAttribute('content'))
+                || '';
+
             fetch(form.action, {
                 method: 'POST',
                 body: fd,
-                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            }).then(function (r) {
-                return r.json().then(function (d) { return { ok: r.ok, data: d }; });
-            }).then(function (res) {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+            }).then(parseResponse).then(function (res) {
                 if (res.ok) {
-                    window.location.href = res.data.redirect || window.location.href;
+                    window.location.href = (res.data && res.data.redirect) || window.location.href;
                     return;
                 }
 
-                var message = validationMessage(res.data, 'proof_photo');
+                if (window.unlockFormSubmission) window.unlockFormSubmission(form);
+
+                var message = fieldError(res.data, 'proof_photo')
+                    || (res.data && res.data.message)
+                    || responseMessage(res.status, res.text);
+
+                console.error('Room keeper status gagal', res.status, (res.text || '').slice(0, 500));
                 showProofError(form, message);
                 if (window.showToast) window.showToast('error', message);
-            }).catch(function () {
-                if (window.showToast) {
-                    window.showToast('error', 'Gagal memproses perubahan status. Periksa koneksi lalu coba lagi.');
-                }
+            }).catch(function (error) {
+                console.error('Room keeper fetch error', error);
+
+                if (window.unlockFormSubmission) window.unlockFormSubmission(form);
+
+                var message = 'Tidak bisa menghubungi server. Periksa koneksi lalu coba lagi.';
+                showProofError(form, message);
+                if (window.showToast) window.showToast('error', message);
             });
         });
     });

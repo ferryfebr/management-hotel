@@ -92,6 +92,32 @@ Karena tidak ada SSH untuk setup backup script otomatis sendiri:
 - [ ] Backup terjadwal aktif (addon Domainesia) **atau** proses backup manual sudah didokumentasikan dan dijalankan minimal sekali sebelum go-live.
 - [ ] `.env` tidak ikut ter-upload ke folder yang bisa diakses publik, dan tidak pernah di-commit ke repository manapun.
 
-## 10. Kalau Menemukan Kerentanan Saat Coding
+## 10. Hardening Aplikasi & Cloudflare
+
+Sudah diterapkan di aplikasi:
+- Security headers: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
+- HSTS otomatis saat request HTTPS.
+- Cache-Control `no-store` untuk halaman login/berisi data pengguna.
+- Rate limit login 5/menit, cek NIK 20/menit, search customer 60/menit, export/backup/retensi 5/menit.
+- Trusted proxy dibatasi ke IP Cloudflare, bukan `*`.
+- Escaping nama/telepon pada autocomplete (cegah DOM XSS).
+- Password staff/profil minimal 8 karakter.
+- `composer audit`: tidak ada advisory aktif.
+- Dependency `league/commonmark` dan `symfony/http-foundation` sudah dipatch.
+
+DDoS tidak bisa dijamin hanya dari Laravel. Wajib set di Cloudflare:
+- Proxy DNS aktif (orange cloud), SSL mode **Full (strict)**.
+- WAF Managed Rules + Bot Fight Mode aktif.
+- Rate limiting rule untuk `/login`, `/customers/check-by-id-card`, `/admin/*`, `/transactions/*`.
+- Jangan cache halaman login/authenticated (`/admin`, `/dashboard`, `/transactions`, `/customers`).
+- Origin sebaiknya hanya menerima koneksi dari IP Cloudflare atau gunakan Cloudflare Tunnel/Authenticated Origin Pulls.
+- Aktifkan Under Attack Mode hanya saat serangan aktif.
+- Pantau analitik Cloudflare untuk lonjakan 4xx/5xx dan request per IP.
+
+Residual risk:
+- CSP masih memakai `unsafe-inline`/`unsafe-eval` karena Tailwind/Alpine CDN dan script inline. Untuk hardening lebih tinggi, asset perlu dibundel lokal dan script dipindah ke file.
+- Shared hosting tidak menyediakan firewall level aplikasi penuh; Cloudflare adalah lapisan utama DDoS.
+
+## 11. Kalau Menemukan Kerentanan Saat Coding
 
 Kalau agent menemukan celah keamanan yang tidak sengaja dibuat sebelumnya (misal route migration ternyata masih aktif, atau `.env` ternyata bisa diakses publik), **perbaiki sebagai prioritas dan laporkan eksplisit ke user** — jangan diam-diam dibiarkan atau dianggap "di luar scope task saat ini".

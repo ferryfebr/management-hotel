@@ -99,8 +99,19 @@ class RetentionService
             'db_percent' => 0,
             'disk_percent' => 0,
         ];
+        $lock = null;
 
         try {
+            try {
+                $lock = Cache::lock('retention:lock', 600);
+
+                if (! $lock->get()) {
+                    return ['skipped' => true, 'reason' => 'Retensi sedang berjalan di proses lain.'];
+                }
+            } catch (Throwable) {
+                $lock = null;
+            }
+
             $summary['sessions'] = $this->pruneExpiredSessions();
             $summary['cache'] = $this->pruneExpiredCache();
             $summary['logs'] = $this->pruneApplicationLogs();
@@ -182,6 +193,14 @@ class RetentionService
             Log::error('Retention gagal: '.$e->getMessage(), ['exception' => $e]);
             $summary['error'] = $e->getMessage();
         } finally {
+            if ($lock) {
+                try {
+                    $lock->release();
+                } catch (Throwable) {
+                    // Abaikan kegagalan pelepasan lock.
+                }
+            }
+
             self::$running = false;
             $this->usage->forget();
         }

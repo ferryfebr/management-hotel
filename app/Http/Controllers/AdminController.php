@@ -7,14 +7,17 @@ use App\Models\ArchiveIndex;
 use App\Models\Customer;
 use App\Models\RoomLog;
 use App\Models\Transaction;
+use App\Support\ArchiveBuilder;
 use App\Support\RetentionService;
 use App\Support\UsageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class AdminController extends Controller
 {
@@ -39,13 +42,24 @@ class AdminController extends Controller
         $pendingCustomerExport = $retention->pendingCustomerExportCount();
         $emergency = (bool) Cache::get('retention:emergency', false);
 
+        $archiveError = ArchiveBuilder::availabilityError(
+            (string) config('retention.archive.disk', 'private'),
+            (string) config('retention.archive.path', 'archives')
+        );
+        $backupError = ArchiveBuilder::availabilityError(
+            (string) config('retention.backup.disk', 'private'),
+            (string) config('retention.backup.path', 'backups')
+        );
+
         return view('admin.index', compact(
             'snapshot',
             'counts',
             'limits',
             'archives',
             'pendingCustomerExport',
-            'emergency'
+            'emergency',
+            'archiveError',
+            'backupError'
         ));
     }
 
@@ -93,7 +107,22 @@ class AdminController extends Controller
 
     public function backup(RetentionService $retention): RedirectResponse
     {
-        $index = $retention->createBackup();
+        $availabilityError = ArchiveBuilder::availabilityError(
+            (string) config('retention.backup.disk', 'private'),
+            (string) config('retention.backup.path', 'backups')
+        );
+
+        if ($availabilityError) {
+            return back()->withErrors('Backup database gagal: '.$availabilityError);
+        }
+
+        try {
+            $index = $retention->createBackup();
+        } catch (Throwable $e) {
+            Log::error('Backup database gagal: '.$e->getMessage(), ['exception' => $e]);
+
+            return back()->withErrors('Backup database gagal dibuat. Cek ruang penyimpanan lalu coba lagi.');
+        }
 
         return redirect()
             ->route('admin.archives')

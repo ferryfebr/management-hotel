@@ -23,7 +23,7 @@ class ProfileController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:150', 'unique:users,email,' . $user->id],
+            'email' => ['required', 'email', 'max:150', 'unique:users,email,'.$user->id],
             'current_password' => ['required', 'string'],
         ], [
             'email.unique' => 'Email sudah dipakai akun lain.',
@@ -43,10 +43,10 @@ class ProfileController extends Controller
         // Ganti password hanya bila field diisi.
         if (! empty($request->input('password'))) {
             $request->validate([
-                'password' => ['required', 'string', 'min:6', 'confirmed'],
+                'password' => ['required', 'string', 'min:8', 'confirmed'],
             ], [
                 'password.confirmed' => 'Konfirmasi kata sandi baru tidak cocok.',
-                'password.min' => 'Kata sandi baru minimal 6 karakter.',
+                'password.min' => 'Kata sandi baru minimal 8 karakter.',
             ]);
 
             $user->update(['password' => Hash::make($request->input('password'))]);

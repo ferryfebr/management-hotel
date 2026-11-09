@@ -162,9 +162,31 @@ class CustomerTest extends TestCase
                 'name' => 'KTP',
                 'rating_status' => Customer::RATING_VIP,
                 'visit_count' => 4,
+                'has_photo' => false,
             ]);
 
         $this->assertSame($customer->id, Customer::first()->id);
+    }
+
+    public function test_check_by_card_reports_when_ktp_photo_is_available(): void
+    {
+        Storage::disk('private')->put('id-cards/saved.jpg', 'ktp');
+        Customer::create([
+            'name' => 'Punya Foto',
+            'phone' => '081234567890',
+            'id_card_number' => '1234567890123456',
+            'id_card_photo' => 'id-cards/saved.jpg',
+        ]);
+
+        $this->actingAs($this->frontOffice)
+            ->postJson(route('customers.check-id-card'), [
+                'id_card_number' => '1234567890123456',
+            ])
+            ->assertOk()
+            ->assertJson([
+                'found' => true,
+                'has_photo' => true,
+            ]);
     }
 
     public function test_check_by_card_returns_not_found_for_unknown_valid_number(): void

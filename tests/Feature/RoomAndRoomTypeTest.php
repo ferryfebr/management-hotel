@@ -192,6 +192,19 @@ class RoomAndRoomTypeTest extends TestCase
         ])->assertSessionHasErrors(['name', 'price']);
     }
 
+    public function test_room_type_store_rejects_duplicate_name(): void
+    {
+        $owner = $this->makeUser(User::ROLE_OWNER);
+        $this->makeRoomType(150000, ['name' => 'Suite']);
+
+        $this->actingAs($owner)->post(route('room-types.store'), [
+            'name' => 'Suite',
+            'price' => 200000,
+        ])->assertSessionHasErrors('name');
+
+        $this->assertSame(1, RoomType::where('name', 'Suite')->count());
+    }
+
     public function test_room_type_delete_is_blocked_while_rooms_exist(): void
     {
         $type = $this->makeRoomType();

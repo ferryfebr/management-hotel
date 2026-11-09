@@ -9,6 +9,7 @@ use App\Models\RoomLog;
 use App\Models\Transaction;
 use App\Support\RetentionService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 
@@ -27,6 +28,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (app()->environment('production')) {
+            URL::forceScheme('https');
+        }
+
         // Retensi tetap berjalan tanpa queue/cron lewat event setelah commit.
         // Saat test, service dijalankan eksplisit supaya hasil test deterministik.
         if (app()->runningUnitTests()) {

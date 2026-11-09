@@ -7,6 +7,7 @@ use App\Models\Room;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\CreatesDomainData;
 use Tests\TestCase;
 
@@ -21,6 +22,13 @@ class ReservationTest extends TestCase
         parent::setUp();
 
         $this->frontOffice = $this->makeUser(User::ROLE_RESEPSIONIS);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_store_creates_reserved_transaction_with_price_snapshot(): void
@@ -175,6 +183,40 @@ class ReservationTest extends TestCase
         $this->actingAs($this->frontOffice)
             ->get(route('reservations.edit', $checkedIn))
             ->assertNotFound();
+    }
+
+    public function test_reservation_today_is_not_marked_late_even_at_early_morning(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-26 00:17:00', config('app.timezone')));
+
+        $reservation = $this->makeTransaction([
+            'status' => Transaction::STATUS_RESERVED,
+            'check_in_date' => now()->toDateString(),
+            'check_out_date' => now()->addDay()->toDateString(),
+        ]);
+
+        $this->actingAs($this->frontOffice)
+            ->get(route('reservations.index'))
+            ->assertOk()
+            ->assertSee($reservation->code)
+            ->assertDontSee('Tanggal reservasi sudah terlewat');
+    }
+
+    public function test_reservation_before_today_is_marked_late(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-26 00:17:00', config('app.timezone')));
+
+        $reservation = $this->makeTransaction([
+            'status' => Transaction::STATUS_RESERVED,
+            'check_in_date' => now()->subDay()->toDateString(),
+            'check_out_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->frontOffice)
+            ->get(route('reservations.index'))
+            ->assertOk()
+            ->assertSee($reservation->code)
+            ->assertSee('Tanggal reservasi sudah terlewat');
     }
 
     public function test_cancel_changes_status_to_cancelled(): void

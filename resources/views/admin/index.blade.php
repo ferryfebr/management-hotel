@@ -30,6 +30,18 @@
     </div>
 @endif
 
+@if($archiveError || $backupError)
+    <div class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p class="font-semibold">Fitur arsip/backup belum siap.</p>
+        @if($archiveError)
+            <p class="text-xs mt-1">Arsip: {{ $archiveError }}</p>
+        @endif
+        @if($backupError)
+            <p class="text-xs mt-1">Backup: {{ $backupError }}</p>
+        @endif
+    </div>
+@endif
+
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
     <div>
         <p class="text-sm text-gray-500">Estimasi pemakaian aplikasi terhadap kuota hosting. Bukan pembacaan resmi cPanel.</p>
@@ -45,34 +57,38 @@
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <div class="md:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
         <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Kuota Hosting</p>
-        <p class="mt-2 text-2xl font-bold">{{ number_format($snapshot['used_mb'], 2, ',', '.') }} MB</p>
-        <p class="text-xs text-gray-500">dari {{ number_format($snapshot['quota_mb'], 0, ',', '.') }} MB</p>
-        <div class="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div class="mt-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+            <div>
+                <p class="text-3xl font-bold">{{ number_format($snapshot['used_mb'], 2, ',', '.') }} MB</p>
+                <p class="text-xs text-gray-500">dari {{ number_format($snapshot['quota_mb'], 0, ',', '.') }} MB total hosting</p>
+            </div>
+            <div class="sm:text-right">
+                <p class="text-lg font-semibold">{{ number_format($snapshot['percent'], 2, ',', '.') }}%</p>
+                <p class="text-xs text-gray-500">{{ $statusLabel }}</p>
+            </div>
+        </div>
+        <div class="mt-3 h-2.5 rounded-full bg-gray-100 overflow-hidden">
             <div class="h-full {{ $snapshot['percent'] >= 85 ? 'bg-red-500' : ($snapshot['percent'] >= 75 ? 'bg-yellow-500' : 'bg-green-500') }}"
                  style="width: {{ min($snapshot['percent'], 100) }}%"></div>
         </div>
-        <div class="mt-2 flex justify-between text-xs">
-            <span class="text-gray-500">{{ number_format($snapshot['percent'], 2, ',', '.') }}%</span>
-            <span class="font-medium text-gray-700">{{ $statusLabel }}</span>
-        </div>
-        <p class="mt-2 text-xs text-gray-500">Sisa: {{ number_format($snapshot['free_mb'], 2, ',', '.') }} MB</p>
-    </div>
+        <p class="mt-2 text-xs text-gray-500">Sisa kuota: {{ number_format($snapshot['free_mb'], 2, ',', '.') }} MB</p>
 
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Database Aktif</p>
-        <p class="mt-2 text-2xl font-bold">{{ number_format($snapshot['db_used_mb'], 2, ',', '.') }} MB</p>
-        <p class="text-xs text-gray-500">budget {{ number_format($snapshot['db_budget_mb'], 0, ',', '.') }} MB</p>
-        <div class="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
-            <div class="h-full {{ $snapshot['db_percent'] >= 70 ? 'bg-red-500' : ($snapshot['db_percent'] >= 60 ? 'bg-yellow-500' : 'bg-green-500') }}"
-                 style="width: {{ min($snapshot['db_percent'], 100) }}%"></div>
+        <div class="mt-4 pt-4 border-t border-gray-100">
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Database Aktif</p>
+                <p class="text-xs font-medium text-gray-700">{{ number_format($snapshot['db_used_mb'], 2, ',', '.') }} / {{ number_format($snapshot['db_budget_mb'], 0, ',', '.') }} MB</p>
+            </div>
+            <div class="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div class="h-full {{ $snapshot['db_percent'] >= 70 ? 'bg-red-500' : ($snapshot['db_percent'] >= 60 ? 'bg-yellow-500' : 'bg-green-500') }}"
+                     style="width: {{ min($snapshot['db_percent'], 100) }}%"></div>
+            </div>
+            <div class="mt-1.5 flex flex-wrap justify-between gap-2 text-xs text-gray-500">
+                <span>{{ number_format($snapshot['db_percent'], 2, ',', '.') }}% dari budget · {{ $dbStatusLabel }}</span>
+                <span>Hard guard 75% = {{ number_format($snapshot['db_budget_mb'] * 0.75, 0, ',', '.') }} MB</span>
+            </div>
         </div>
-        <div class="mt-2 flex justify-between text-xs">
-            <span class="text-gray-500">{{ number_format($snapshot['db_percent'], 2, ',', '.') }}%</span>
-            <span class="font-medium text-gray-700">{{ $dbStatusLabel }}</span>
-        </div>
-        <p class="mt-2 text-xs text-gray-500">Hard guard 75% = {{ number_format($snapshot['db_budget_mb'] * 0.75, 0, ',', '.') }} MB</p>
     </div>
 
     <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">

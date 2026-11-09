@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Kharisma Hotel')</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -216,6 +217,58 @@
     try { sessionStorage.removeItem('checkin_id_card_photo'); } catch (e) {}
 </script>
 @endif
+
+{{-- Pengaman double submit: form native dikunci setelah submit pertama.
+     Form yang submit lewat fetch mengunci/membuka sendiri lewat
+     lockFormSubmission()/unlockFormSubmission(). --}}
+<script>
+(function () {
+    function toggleButtons(form, locked) {
+        form.querySelectorAll('button[type="submit"]').forEach(function (btn) {
+            btn.disabled = locked;
+            btn.classList.toggle('opacity-60', locked);
+            btn.classList.toggle('cursor-not-allowed', locked);
+        });
+    }
+
+    window.lockFormSubmission = function (form) {
+        if (!form || form.dataset.submitting === '1') return;
+        form.dataset.submitting = '1';
+        // Tunda disable supaya value tombol submit tetap ikut terkirim.
+        setTimeout(function () { toggleButtons(form, true); }, 0);
+    };
+
+    window.unlockFormSubmission = function (form) {
+        if (!form) return;
+        form.dataset.submitting = '0';
+        toggleButtons(form, false);
+    };
+
+    // Listener ini sengaja dipasang terakhir (bubble, bukan capture) supaya
+    // handler halaman sudah jalan lebih dulu. Kalau handler sudah
+    // preventDefault (submit via fetch), biarkan handler itu yang mengunci.
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+
+        if (!(form instanceof HTMLFormElement)) return;
+
+        if (form.dataset.submitting === '1') {
+            e.preventDefault();
+            return;
+        }
+
+        if (e.defaultPrevented) return;
+
+        window.lockFormSubmission(form);
+    });
+
+    window.addEventListener('pageshow', function () {
+        document.querySelectorAll('form[data-submitting="1"]').forEach(function (form) {
+            window.unlockFormSubmission(form);
+        });
+    });
+})();
+</script>
 
 <x-flash-toast />
 </body>

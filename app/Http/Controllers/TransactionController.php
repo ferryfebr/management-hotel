@@ -13,6 +13,7 @@ use App\Support\PhotoRetention;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -61,11 +62,19 @@ class TransactionController extends Controller
      */
     public function createCheckIn(Request $request): RedirectResponse|JsonResponse
     {
+        $idCardInput = (string) $request->input('id_card_number');
+        $existingCustomer = preg_match('/^\d{16}$/', $idCardInput)
+            ? Customer::withTrashed()->where('id_card_number', $idCardInput)->first()
+            : null;
+        $hasStoredPhoto = $existingCustomer
+            && $existingCustomer->id_card_photo
+            && Storage::disk('private')->exists($existingCustomer->id_card_photo);
+
         $data = $request->validate([
             'customer_name' => ['required', 'string', 'max:150'],
             'customer_phone' => ['required', 'digits_between:10,14'],
             'id_card_number' => ['required', 'digits:16'],
-            'id_card_photo' => ['required', 'image', 'max:4096'], // wajib upload, maks 4MB
+            'id_card_photo' => [$hasStoredPhoto ? 'nullable' : 'required', 'image', 'max:4096'],
             'room_id' => ['required', 'exists:rooms,id'],
             // Diisi hanya saat konversi reservasi -> check-in; dipakai untuk
             // mengecualikan reservasi itu sendiri dari cek bentrok tanggal.
@@ -158,37 +167,71 @@ class TransactionController extends Controller
             }
         }
 
-        $transaction = DB::transaction(function () use ($data, $room, $request, $reservation) {
-            // Cari pelanggan dari KTP. Saat konversi reservasi, pelanggan lama
-            // (yang dibuat dari nomor telepon) dipakai ulang bila KTP belum ada.
-            $customer = Customer::where('id_card_number', $data['id_card_number'])->first();
+        $oldPhotoPath = null;
+        $newPhotoPath = null;
+
+        $transaction = DB::transaction(function () use ($data, $room, $request, $reservation, &$oldPhotoPath, &$newPhotoPath) {
+            // Cari pelanggan dari KTP. withTrashed() wajib: NIK pada baris
+            // soft-deleted tetap menempati unique index, sehingga lookup biasa
+            // akan menganggapnya tidak ada lalu gagal insert (duplicate entry).
+            // Saat konversi reservasi, pelanggan lama (yang dibuat dari nomor
+            // telepon) dipakai ulang bila KTP belum ada.
+            $customer = Customer::withTrashed()
+                ->where('id_card_number', $data['id_card_number'])
+                ->lockForUpdate()
+                ->first();
 
             if (! $customer && $reservation) {
                 $customer = $reservation->customer;
             }
 
+            if ($customer && $customer->trashed()) {
+                $customer->restore();
+            }
+
             if (! $customer) {
-                $customer = Customer::create([
-                    'name' => $data['customer_name'],
-                    'phone' => $data['customer_phone'],
-                    'id_card_number' => $data['id_card_number'],
-                ]);
+                try {
+                    $customer = Customer::create([
+                        'name' => $data['customer_name'],
+                        'phone' => $data['customer_phone'],
+                        'id_card_number' => $data['id_card_number'],
+                    ]);
+                } catch (UniqueConstraintViolationException) {
+                    // Dua request check-in bersamaan (double submit) bisa lolos
+                    // pengecekan di atas. Ambil baris yang sudah tersimpan dan
+                    // pakai ulang, bukan menggagalkan seluruh transaksi.
+                    $customer = Customer::withTrashed()
+                        ->where('id_card_number', $data['id_card_number'])
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    if ($customer->trashed()) {
+                        $customer->restore();
+                    }
+                }
             }
 
             // Simpan foto KTP di disk PRIVATE, bukan public — data PII sensitif.
             // Wajib dikompresi: resize (maks lebar 1000px) + kualitas 70% (prd §5.1, security §2).
-            $manager = new ImageManager(new Driver);
-            $image = $manager->read($request->file('id_card_photo'));
-            $image->scaleDown(1000);
-            $encoded = $image->toJpeg(70);
-            $idCardPath = 'id-cards/'.uniqid().'.jpg';
-            Storage::disk('private')->put($idCardPath, (string) $encoded);
+            $oldPhotoPath = $customer->id_card_photo;
+            $newPhotoPath = $oldPhotoPath;
+
+            // Foto KTP hanya diproses bila diunggah. Pelanggan lama yang fotonya
+            // masih tersimpan tidak perlu upload ulang.
+            if ($request->hasFile('id_card_photo')) {
+                $manager = new ImageManager(new Driver);
+                $image = $manager->read($request->file('id_card_photo'));
+                $image->scaleDown(1000);
+                $encoded = $image->toJpeg(70);
+                $newPhotoPath = 'id-cards/'.uniqid().'.jpg';
+                Storage::disk('private')->put($newPhotoPath, (string) $encoded);
+            }
 
             $customer->update([
                 'name' => $data['customer_name'],
                 'phone' => $data['customer_phone'],
                 'id_card_number' => $data['id_card_number'],
-                'id_card_photo' => $idCardPath,
+                'id_card_photo' => $newPhotoPath,
             ]);
 
             $totalDays = (int) now()->parse($data['check_in_date'])->diffInDays($data['check_out_date']);
@@ -243,10 +286,16 @@ class TransactionController extends Controller
 
             $room->update(['status' => Room::STATUS_OCCUPIED]);
 
-            $customer->increment('visit_count');
+            // Dihitung ulang dari transaksi supaya reservasi + check-in
+            // tidak pernah dihitung sebagai dua kunjungan.
+            $customer->recalculateVisitCount();
 
             return $transaction;
         });
+
+        if ($oldPhotoPath && $newPhotoPath && $oldPhotoPath !== $newPhotoPath) {
+            Storage::disk('private')->delete($oldPhotoPath);
+        }
 
         // Retensi foto: jaga folder tetap maks 1000 file (hapus paling lama).
         // Dijalankan setelah transaksi commit agar tidak menahan lock DB.

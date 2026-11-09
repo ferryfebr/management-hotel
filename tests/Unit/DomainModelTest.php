@@ -111,6 +111,41 @@ class DomainModelTest extends TestCase
         $this->assertSame('2026-11-15 12:00:00', $transaction->scheduledCheckoutAt()->toDateTimeString());
     }
 
+    public function test_customer_visit_count_is_recalculated_from_distinct_stay_dates(): void
+    {
+        $customer = $this->makeCustomer();
+        $user = $this->makeUser(User::ROLE_RESEPSIONIS);
+        $room = $this->makeRoom();
+
+        $this->makeTransaction([
+            'customer' => $customer,
+            'user' => $user,
+            'room' => $room,
+            'status' => Transaction::STATUS_CHECKED_IN,
+            'check_in_date' => '2026-11-01',
+            'check_out_date' => '2026-11-03',
+        ]);
+        $this->makeTransaction([
+            'customer' => $customer,
+            'user' => $user,
+            'room' => $room,
+            'status' => Transaction::STATUS_CHECKED_OUT,
+            'check_in_date' => '2026-11-01',
+            'check_out_date' => '2026-11-03',
+        ]);
+        $this->makeTransaction([
+            'customer' => $customer,
+            'user' => $user,
+            'room' => $room,
+            'status' => Transaction::STATUS_RESERVED,
+            'check_in_date' => '2026-12-01',
+            'check_out_date' => '2026-12-02',
+        ]);
+
+        $this->assertSame(1, $customer->recalculateVisitCount());
+        $this->assertSame(1, $customer->fresh()->visit_count);
+    }
+
     public function test_customer_rating_and_id_card_photo_url(): void
     {
         $customer = $this->makeCustomer([

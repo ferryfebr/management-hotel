@@ -53,6 +53,12 @@
     var searchUrl = '{{ route("customers.search") }}';
     var timer = null;
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+        });
+    }
+
     function hide() { results.classList.add('hidden'); results.innerHTML = ''; }
 
     function render(items) {
@@ -61,8 +67,8 @@
         items.forEach(function (c) {
             var li = document.createElement('li');
             li.className = 'px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-b-0';
-            li.innerHTML = '<div class="font-medium">' + c.name + ' <span class="text-gray-400">(' + c.visit_count + 'x)</span></div>' +
-                '<div class="text-gray-500">' + (c.phone || '-') + '</div>';
+            li.innerHTML = '<div class="font-medium">' + escapeHtml(c.name) + ' <span class="text-gray-400">(' + escapeHtml(c.visit_count) + 'x)</span></div>' +
+                '<div class="text-gray-500">' + escapeHtml(c.phone || '-') + '</div>';
             li.addEventListener('click', function () {
                 nameInput.value = c.name;
                 phoneInput.value = c.phone || '';

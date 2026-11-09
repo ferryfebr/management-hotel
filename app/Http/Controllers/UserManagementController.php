@@ -11,9 +11,9 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
 class UserManagementController extends Controller
@@ -39,11 +39,11 @@ class UserManagementController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:150', 'unique:users,email'],
             'role' => ['required', 'in:resepsionis,room_keeper'],
-            'password' => ['required', 'string', 'min:6', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
         ], [
             'email.unique' => 'Email sudah dipakai akun lain.',
             'password.confirmed' => 'Konfirmasi kata sandi tidak cocok.',
-            'password.min' => 'Kata sandi minimal 6 karakter.',
+            'password.min' => 'Kata sandi minimal 8 karakter.',
         ]);
 
         User::create([
@@ -57,11 +57,11 @@ class UserManagementController extends Controller
         ActivityLog::record(
             'Tambah akun',
             ActivityLog::CATEGORY_AKUN,
-            "{$data['name']} (" . User::roleLabel($data['role']) . ')'
+            "{$data['name']} (".User::roleLabel($data['role']).')'
         );
 
         return redirect()->route('users.index')
-            ->with('success', 'Akun ' . User::roleLabel($data['role']) . ' berhasil ditambahkan.');
+            ->with('success', 'Akun '.User::roleLabel($data['role']).' berhasil ditambahkan.');
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -71,14 +71,14 @@ class UserManagementController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:150', 'unique:users,email,' . $user->id],
+            'email' => ['required', 'email', 'max:150', 'unique:users,email,'.$user->id],
             'role' => ['required', 'in:resepsionis,room_keeper'],
             'is_active' => ['nullable', 'boolean'],
-            'password' => ['nullable', 'string', 'min:6', 'confirmed'],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ], [
             'email.unique' => 'Email sudah dipakai akun lain.',
             'password.confirmed' => 'Konfirmasi kata sandi tidak cocok.',
-            'password.min' => 'Kata sandi minimal 6 karakter.',
+            'password.min' => 'Kata sandi minimal 8 karakter.',
         ]);
 
         $user->update([
@@ -95,7 +95,7 @@ class UserManagementController extends Controller
         ActivityLog::record(
             'Ubah akun',
             ActivityLog::CATEGORY_AKUN,
-            "{$user->name} (" . User::roleLabel($user->role) . ')' . ($request->boolean('is_active') ? '' : ' — dinonaktifkan')
+            "{$user->name} (".User::roleLabel($user->role).')'.($request->boolean('is_active') ? '' : ' — dinonaktifkan')
         );
 
         return redirect()->route('users.index')
@@ -113,7 +113,7 @@ class UserManagementController extends Controller
         ActivityLog::record(
             'Nonaktifkan akun',
             ActivityLog::CATEGORY_AKUN,
-            "{$user->name} (" . User::roleLabel($user->role) . ')'
+            "{$user->name} (".User::roleLabel($user->role).')'
         );
 
         return redirect()->route('users.index')
@@ -182,7 +182,7 @@ class UserManagementController extends Controller
                 $items->push($this->row(
                     $t->user,
                     $action,
-                    ($t->customer?->name ?? '-') . ($t->room?->room_number ? " — Kamar {$t->room->room_number}" : ''),
+                    ($t->customer?->name ?? '-').($t->room?->room_number ? " — Kamar {$t->room->room_number}" : ''),
                     $t->created_at,
                     'transaksi'
                 ));
@@ -206,7 +206,7 @@ class UserManagementController extends Controller
                 $items->push($this->row(
                     $p->receiver,
                     $label,
-                    ($p->transaction?->customer?->name ?? '-') . ' — Rp ' . number_format((float) $p->amount, 0, ',', '.'),
+                    ($p->transaction?->customer?->name ?? '-').' — Rp '.number_format((float) $p->amount, 0, ',', '.'),
                     $p->paid_at,
                     'pembayaran'
                 ));
@@ -224,7 +224,7 @@ class UserManagementController extends Controller
                 $items->push($this->row(
                     $e->extendedBy,
                     'Perpanjang masa inap',
-                    ($e->transaction?->customer?->name ?? '-') . " (+{$e->additional_days} malam)",
+                    ($e->transaction?->customer?->name ?? '-')." (+{$e->additional_days} malam)",
                     $e->created_at,
                     'perpanjangan'
                 ));
@@ -242,7 +242,7 @@ class UserManagementController extends Controller
                 $items->push($this->row(
                     $r->transferredBy,
                     'Pindah kamar',
-                    ($r->transaction?->customer?->name ?? '-') . ": {$r->fromRoom?->room_number} → {$r->toRoom?->room_number}",
+                    ($r->transaction?->customer?->name ?? '-').": {$r->fromRoom?->room_number} → {$r->toRoom?->room_number}",
                     $r->transferred_at,
                     'transfer'
                 ));
@@ -266,7 +266,7 @@ class UserManagementController extends Controller
                 $items->push($this->row(
                     $log->user,
                     $label,
-                    "Kamar {$log->room?->room_number}" . ($log->notes ? ' — ' . $log->notes : ''),
+                    "Kamar {$log->room?->room_number}".($log->notes ? ' — '.$log->notes : ''),
                     $log->created_at,
                     'kamar',
                     $log->proof_photo ? route('room-logs.photo', $log) : null

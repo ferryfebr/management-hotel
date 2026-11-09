@@ -53,7 +53,11 @@ class CustomerController extends Controller
     {
         $data = $request->validate([
             'rating_status' => ['required', 'in:regular,warning,vip,blacklisted'],
-            'notes' => ['nullable', 'string'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ], [
+            'rating_status.required' => 'Status pelanggan wajib dipilih.',
+            'rating_status.in' => 'Status pelanggan tidak valid.',
+            'notes.max' => 'Catatan maksimal 5000 karakter.',
         ]);
 
         $changes = [];
@@ -71,7 +75,7 @@ class CustomerController extends Controller
         ActivityLog::record(
             'Ubah data pelanggan',
             ActivityLog::CATEGORY_PELANGGAN,
-            $customer->name . ($changes ? ' — ' . implode(', ', $changes) : '')
+            $customer->name.($changes ? ' — '.implode(', ', $changes) : '')
         );
 
         return back()->with('success', 'Data pelanggan berhasil diperbarui.');
@@ -79,7 +83,7 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer): RedirectResponse
     {
-        $detail = $customer->name . ($customer->phone ? " ({$customer->phone})" : '');
+        $detail = $customer->name.($customer->phone ? " ({$customer->phone})" : '');
 
         $customer->delete(); // soft delete
 
@@ -140,7 +144,7 @@ class CustomerController extends Controller
             return response()->json(['found' => false, 'valid' => false]);
         }
 
-        $customer = Customer::where('id_card_number', $idCard)->first();
+        $customer = Customer::withTrashed()->where('id_card_number', $idCard)->first();
 
         if (! $customer) {
             return response()->json(['found' => false]);
@@ -151,6 +155,8 @@ class CustomerController extends Controller
             'name' => $customer->name,
             'rating_status' => $customer->rating_status,
             'visit_count' => $customer->visit_count,
+            'has_photo' => (bool) ($customer->id_card_photo
+                && Storage::disk('private')->exists($customer->id_card_photo)),
         ]);
     }
 }
